@@ -67,7 +67,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.1.2",
     "@eslint/js": "^9.31.0",
-    "@eslint/json": "^0.13.0",
+    "@eslint/json": "^0.14.0",
     "@eslint/markdown": "^7.0.0",
     "@types/bun": "latest",
     "@types/express": "^5.0.3",
