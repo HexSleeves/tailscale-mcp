@@ -65,7 +65,7 @@
     "zod": "^4.0.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.2",
+    "@biomejs/biome": "2.3.6",
     "@eslint/js": "^9.31.0",
     "@eslint/json": "^0.13.0",
     "@eslint/markdown": "^7.0.0",
