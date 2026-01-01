@@ -1,6 +1,6 @@
 {
   "name": "@hexsleeves/tailscale-mcp-server",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A Model Context Protocol (MCP) server that provides seamless integration with Tailscale's CLI commands and REST API, enabling automated network management and monitoring through a standardized interface.",
   "keywords": [
     "tailscale",
@@ -58,32 +58,23 @@
     "publish:test": "./scripts/test-publish.sh"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.16.0",
-    "axios": "^1.10.0",
-    "dotenv": "^17.2.0",
-    "express": "^5.1.0",
-    "zod": "^4.0.5"
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "zod": "^4.3.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.1.2",
-    "@eslint/js": "^9.31.0",
-    "@eslint/json": "^0.13.0",
-    "@eslint/markdown": "^7.0.0",
+    "@biomejs/biome": "2.3.10",
     "@types/bun": "latest",
-    "@types/express": "^5.0.3",
+    "@types/express": "^5.0.6",
     "@types/json-schema": "7.0.15",
-    "@types/node": "^24.0.14",
-    "@typescript-eslint/eslint-plugin": "^8.37.0",
-    "@typescript-eslint/parser": "^8.37.0",
+    "@types/node": "^25.0.3",
     "audit-ci": "^7.1.0",
-    "esbuild": "^0.25.6",
-    "eslint": "^9.31.0",
-    "globals": "^16.3.0",
-    "prettier": "3.6.2",
-    "rimraf": "^6.0.1",
-    "semver": "^7.7.2",
-    "tsx": "^4.20.3",
-    "typescript": "^5.8.3",
-    "typescript-eslint": "^8.37.0"
+    "esbuild": "^0.27.2",
+    "rimraf": "^6.1.2",
+    "semver": "^7.7.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

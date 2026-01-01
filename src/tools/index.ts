@@ -1,6 +1,5 @@
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod/v4";
-// Import all tool modules
+import { z } from "zod";
 import { logger } from "../logger.js";
 import type { TailscaleAPI } from "../tailscale/tailscale-api.js";
 import type { TailscaleCLI } from "../tailscale/tailscale-cli.js";
@@ -25,6 +24,28 @@ export interface ToolDefinition<T extends z.ZodSchema = z.ZodSchema> {
 
 export interface ToolModule {
   tools: ToolDefinition[];
+}
+
+// Define the expected JSON Schema type for MCP tools
+interface MCPJsonSchema {
+  type: "object";
+  properties?: Record<string, object>;
+  required?: string[];
+  [key: string]: unknown;
+}
+
+// Helper function to convert Zod schema to JSON Schema
+function zodToJsonSchema(schema: z.ZodSchema): MCPJsonSchema {
+  try {
+    const jsonSchema = z.toJSONSchema(schema);
+
+    // Cast to unknown first then to compatible type since we know Zod objects produce valid JSON schemas
+    // that conform to what MCP expects (mostly objects)
+    return jsonSchema as unknown as MCPJsonSchema;
+  } catch (error) {
+    logger.error("Schema conversion failed:", error);
+    return { type: "object", properties: {} };
+  }
 }
 
 // Tool registry
@@ -57,7 +78,7 @@ export class ToolRegistry {
   private register(tool: ToolDefinition): void {
     if (this.tools.has(tool.name)) {
       logger.warn(
-        `Duplicate tool name detected: "${tool.name}" – overriding previous definition`,
+        `Duplicate tool name detected: "${tool.name}" – overriding previous definition`
       );
     }
     this.tools.set(tool.name, tool);
@@ -73,7 +94,7 @@ export class ToolRegistry {
 
   async callTool(
     name: string,
-    args?: Record<string, unknown>,
+    args?: Record<string, unknown>
   ): Promise<CallToolResult> {
     const tool = this.tools.get(name);
     if (!tool) {
@@ -107,7 +128,9 @@ export class ToolRegistry {
         content: [
           {
             type: "text",
-            text: `Tool error: ${error instanceof Error ? error.message : "Unknown error"}`,
+            text: `Tool error: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`,
           },
         ],
         isError: true,
@@ -130,33 +153,5 @@ export class ToolRegistry {
     // we would add cleanup logic here.
 
     logger.debug("ToolRegistry resources disposed");
-  }
-}
-
-// Define the expected JSON Schema type for MCP tools
-interface MCPJsonSchema {
-  type: "object";
-  properties?: Record<string, unknown>;
-  required?: string[];
-  [key: string]: unknown;
-}
-
-// Helper function to convert Zod schema to JSON Schema
-function zodToJsonSchema(schema: z.ZodSchema): MCPJsonSchema {
-  try {
-    const jsonSchema = z.toJSONSchema(schema);
-
-    // Extract properties and required from the generated schema, but ensure type is "object"
-    const { type: _unusedType, $schema: _unusedSchema, ...otherProps } = jsonSchema;
-
-    const mcpSchema: MCPJsonSchema = {
-      type: "object",
-      ...otherProps,
-    };
-
-    return mcpSchema;
-  } catch (error) {
-    logger.error("Schema conversion failed:", error);
-    return { type: "object", properties: {} };
   }
 }

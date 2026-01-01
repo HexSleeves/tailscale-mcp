@@ -133,7 +133,9 @@ describe("TailscaleCLI Security Tests (integration)", () => {
       ];
 
       for (const advertiseRoutes of ourValidationRoutes) {
-        expect(() => cli.up({ advertiseRoutes })).toThrow(/Invalid route format/);
+        expect(() => cli.up({ advertiseRoutes })).toThrow(
+          /Invalid route format/,
+        );
       }
 
       // Routes that are caught by Tailscale CLI itself (which is also good security)

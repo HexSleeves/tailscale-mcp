@@ -1,6 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getErrorMessage } from "@/utils.js";
+import {
+  getErrorMessage,
+  validateRoutes,
+  validateStringInput,
+  validateTarget,
+} from "../utils.js";
 import { logger } from "../logger.js";
 import {
   type CLIResponse,
@@ -10,126 +15,11 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-// Validate target format (hostname, IP, or Tailscale node name)
-// Hostname/IP pattern: no leading/trailing dots or hyphens, no consecutive dots
-export const VALID_TARGET_PATTERN =
-  /^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*)|([0-9a-fA-F:]+))$/;
-
-// CIDR validation
-export const cidrPattern =
-  /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$|^([0-9a-fA-F:]+)\/\d{1,3}$/;
-
 export class TailscaleCLI {
   private readonly cliPath: string;
 
   constructor(cliPath = "tailscale") {
     this.cliPath = cliPath;
-  }
-
-  private validateTarget(target: string): void {
-    if (!target || typeof target !== "string") {
-      throw new Error("Invalid target specified");
-    }
-
-    // Comprehensive validation to prevent command injection
-    const dangerousChars = [
-      ";",
-      "&",
-      "|",
-      "`",
-      "$",
-      "(",
-      ")",
-      "{",
-      "}",
-      "[",
-      "]",
-      "<",
-      ">",
-      "\\",
-      "'",
-      '"',
-    ];
-    for (const char of dangerousChars) {
-      if (target.includes(char)) {
-        throw new Error(`Invalid character '${char}' in target`);
-      }
-    }
-
-    // Additional validation for common patterns
-    if (
-      target.includes("..") ||
-      target.startsWith("/") ||
-      target.includes("~")
-    ) {
-      throw new Error("Invalid path patterns in target");
-    }
-
-    // Validate target format (hostname, IP, or Tailscale node name)
-    // Hostname/IP pattern: no leading/trailing dots or hyphens, no consecutive dots
-    if (!VALID_TARGET_PATTERN.test(target)) {
-      throw new Error("Target contains invalid characters");
-    }
-
-    // Length validation
-    if (target.length > 253) {
-      // DNS hostname max length
-      throw new Error("Target too long");
-    }
-  }
-
-  private validateStringInput(input: string, fieldName: string): void {
-    if (typeof input !== "string") {
-      throw new TypeError(`${fieldName} must be a string`);
-    }
-
-    // Check for dangerous characters
-    const dangerousChars = [
-      ";",
-      "&",
-      "|",
-      "`",
-      "$",
-      "(",
-      ")",
-      "{",
-      "}",
-      "<",
-      ">",
-      "\\",
-    ];
-    for (const char of dangerousChars) {
-      if (input.includes(char)) {
-        throw new Error(`Invalid character '${char}' in ${fieldName}`);
-      }
-    }
-
-    // Length validation
-    if (input.length > 1000) {
-      throw new Error(`${fieldName} too long`);
-    }
-  }
-
-  private validateRoutes(routes: string[]): void {
-    if (!Array.isArray(routes)) {
-      throw new TypeError("Routes must be an array");
-    }
-
-    for (const route of routes) {
-      if (typeof route !== "string") {
-        throw new TypeError("Each route must be a string");
-      }
-
-      // Basic CIDR validation
-      // More precise CIDR validation
-      if (
-        !cidrPattern.test(route) &&
-        route !== "0.0.0.0/0" &&
-        route !== "::/0"
-      ) {
-        throw new Error(`Invalid route format: ${route}`);
-      }
-    }
   }
 
   /**
@@ -287,7 +177,7 @@ export class TailscaleCLI {
     const args = ["up"];
 
     if (options.loginServer) {
-      this.validateStringInput(options.loginServer, "loginServer");
+      validateStringInput(options.loginServer, "loginServer");
       args.push("--login-server", options.loginServer);
     }
 
@@ -300,17 +190,17 @@ export class TailscaleCLI {
     }
 
     if (options.hostname) {
-      this.validateStringInput(options.hostname, "hostname");
+      validateStringInput(options.hostname, "hostname");
       args.push("--hostname", options.hostname);
     }
 
     if (options.advertiseRoutes && options.advertiseRoutes.length > 0) {
-      this.validateRoutes(options.advertiseRoutes);
+      validateRoutes(options.advertiseRoutes);
       args.push("--advertise-routes", options.advertiseRoutes.join(","));
     }
 
     if (options.authKey) {
-      this.validateStringInput(options.authKey, "authKey");
+      validateStringInput(options.authKey, "authKey");
       // Pass auth key directly as argument since execFile handles it securely
       // The auth key won't be exposed in shell command history
       // Changed from info to debug
@@ -335,7 +225,7 @@ export class TailscaleCLI {
   private static readonly MAX_PING_COUNT = 100;
 
   async ping(target: string, count = 4): Promise<CLIResponse<string>> {
-    this.validateTarget(target);
+    validateTarget(target);
 
     if (
       !Number.isInteger(count) ||
@@ -378,7 +268,7 @@ export class TailscaleCLI {
     const args = ["set"];
 
     if (nodeId) {
-      this.validateTarget(nodeId);
+      validateTarget(nodeId);
       args.push("--exit-node", nodeId);
     } else {
       args.push("--exit-node="); // Clear exit node with empty value

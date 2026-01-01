@@ -174,7 +174,8 @@ export class TailscaleAPI {
       // Network or other Error instance
       return {
         success: false,
-        error: error.message || "Network error: Unable to connect to Tailscale API",
+        error:
+          error.message || "Network error: Unable to connect to Tailscale API",
         statusCode: 0,
       };
     }

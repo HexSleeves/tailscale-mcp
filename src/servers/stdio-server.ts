@@ -67,7 +67,6 @@ export class StdioMCPServer {
       KEEP_ALIVE_INTERVAL,
     ).unref(); // allow Node to exit naturally
 
-
     logger.debug(
       "Stdio MCP Server started successfully and listening for MCP messages",
     );

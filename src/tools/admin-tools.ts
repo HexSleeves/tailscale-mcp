@@ -1,5 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { logger } from "../logger.js";
 import { returnToolError, returnToolSuccess } from "../utils.js";
 import type { ToolContext, ToolModule } from "./index.js";
@@ -155,8 +155,10 @@ async function getTailnetInfo(
     }
 
     const info = result.data;
-    const isKeyExpiryDisabled = info?.keyExpiryDisabled ? "Yes" : "No"
-    const isDeviceApprovalRequired = info?.deviceApprovalRequired ? "Yes" : "No"
+    const isKeyExpiryDisabled = info?.keyExpiryDisabled ? "Yes" : "No";
+    const isDeviceApprovalRequired = info?.deviceApprovalRequired
+      ? "Yes"
+      : "No";
 
     const formattedInfo = `**Tailnet Information**
 

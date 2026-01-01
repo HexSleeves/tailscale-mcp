@@ -36,7 +36,7 @@ export interface UnifiedResponse<T> {
  */
 export class UnifiedTailscaleClient {
   private readonly api: TailscaleAPI;
-  private readonly  cli: TailscaleCLI;
+  private readonly cli: TailscaleCLI;
   private readonly config: UnifiedClientConfig;
   private apiAvailable = false;
   private cliAvailable = false;

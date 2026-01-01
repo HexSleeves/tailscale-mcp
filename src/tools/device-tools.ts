@@ -1,5 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 import { logger } from "../logger.js";
 import type { UnifiedResponse } from "../tailscale/unified-client.js";
 import { returnToolError, returnToolSuccess } from "../utils.js";
