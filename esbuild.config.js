@@ -1,6 +1,6 @@
 import { build } from "esbuild";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // Read package.json to get dependencies
 let packageJson = {
@@ -121,7 +121,7 @@ export async function buildProject(configs = [prodEsmConfig, prodCjsConfig]) {
     console.log("✅ Build completed successfully");
 
     // Make the ESM output executable (only the main entry point)
-    const { chmodSync } = await import("fs");
+    const { chmodSync } = await import("node:fs");
     try {
       chmodSync("dist/index.js", 0o755);
       console.log("✅ Made output executable");

@@ -38,7 +38,7 @@ describe("TailscaleCLI Security Tests (integration)", () => {
       ];
 
       for (const target of pathTraversalTargets) {
-        expect(() => cli.ping(target)).toThrow(/Invalid/);
+        expect(() => cli.ping(target)).toThrow(/invalid/i);
       }
     });
 
@@ -125,29 +125,21 @@ describe("TailscaleCLI Security Tests (integration)", () => {
 
   describe("Route Validation", () => {
     test("should validate CIDR routes", async () => {
-      // Routes that should be caught by our validation
+      // Routes that should be caught by our validation using ipaddr.js
       const ourValidationRoutes = [
         ["invalid-route"],
         ["192.168.1.1/"], // Missing prefix length
         ["192.168.1.1/abc"], // Non-numeric prefix
+        ["192.168.1.1/33"], // Invalid prefix (> 32 for IPv4)
+        ["256.256.256.256/24"], // Invalid IP (octets > 255)
+        ["999.999.999.999/32"], // Invalid IP (octets > 255)
+        ["2001:db8::/129"], // Invalid prefix (> 128 for IPv6)
       ];
 
       for (const advertiseRoutes of ourValidationRoutes) {
         expect(() => cli.up({ advertiseRoutes })).toThrow(
-          /Invalid route format/,
+          /Invalid CIDR format:/,
         );
-      }
-
-      // Routes that are caught by Tailscale CLI itself (which is also good security)
-      const cliCaughtRoutes = [
-        ["192.168.1.1/33"], // Invalid CIDR - caught by CLI
-        ["256.256.256.256/24"], // Invalid IP - caught by CLI
-      ];
-
-      for (const advertiseRoutes of cliCaughtRoutes) {
-        const result = await cli.up({ advertiseRoutes });
-        expect(result.success).toBe(false);
-        expect(result.error).toMatch(/not a valid IP address or CIDR prefix/);
       }
     });
 
