@@ -45,19 +45,9 @@ export function isValidIPAddress(ip: string): boolean {
  */
 export function isValidCIDR(cidr: string): boolean {
   try {
-    // ipaddr.parseCIDR returns [IPv4 | IPv6, number] or throws
-    const [addr, prefixLength] = ipaddr.parseCIDR(cidr);
-
-    // Additional validation: ensure prefix length is within valid range
-    // ipaddr.js already validates this, but we double-check for safety
-    if (addr.kind() === "ipv4") {
-      return prefixLength >= 0 && prefixLength <= 32;
-    }
-    if (addr.kind() === "ipv6") {
-      return prefixLength >= 0 && prefixLength <= 128;
-    }
-
-    return false;
+    // ipaddr.parseCIDR validates the IP and prefix length, throwing on invalid input
+    ipaddr.parseCIDR(cidr);
+    return true;
   } catch {
     return false;
   }
