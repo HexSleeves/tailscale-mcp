@@ -1,11 +1,11 @@
 {
   "mcpServers": {
-    "local-mcp-server": {
-      "command": "bun",
-      "args": [
-        "run",
-        "/Users/jacob/Projects/mcp_servers/tailscale-mcp/dist/index.js"
-      ]
-    }
+    // "local-mcp-server": {
+    //   "command": "bun",
+    //   "args": [
+    //     "run",
+    //     "/Users/jacob/Projects/mcp_servers/tailscale-mcp/dist/index.js"
+    //   ]
+    // }
   }
 }

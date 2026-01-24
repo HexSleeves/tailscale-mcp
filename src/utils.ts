@@ -1,16 +1,67 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { isAxiosError } from "axios";
+import * as ipaddr from "ipaddr.js";
 import { logger } from "./logger.js";
 import { CLIError, TailscaleError } from "./types.js";
 
 // Validation Constants
-// Hostname/IP pattern: no leading/trailing dots or hyphens, no consecutive dots
+// Hostname pattern: valid DNS hostname format
+export const VALID_HOSTNAME_PATTERN =
+  /^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*)$/;
+
+// Legacy pattern kept for backward compatibility - prefer isValidIPAddress for IP validation
 export const VALID_TARGET_PATTERN =
   /^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*)|([0-9a-fA-F:]+))$/;
 
-// CIDR validation
+// Legacy CIDR pattern - prefer isValidCIDR for proper validation
+// Note: This pattern is insufficient for security-critical validation
 export const CIDR_PATTERN =
   /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$|^([0-9a-fA-F:]+)\/\d{1,3}$/;
+
+/**
+ * Validates an IP address (IPv4 or IPv6) using ipaddr.js
+ * @param ip - The IP address string to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidIPAddress(ip: string): boolean {
+  try {
+    ipaddr.parse(ip);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validates a CIDR notation string (e.g., "10.0.0.0/8" or "2001:db8::/32")
+ * Uses ipaddr.js for proper validation including:
+ * - IPv4 octets must be 0-255
+ * - IPv6 segments must be valid hex
+ * - IPv4 prefix length must be 0-32
+ * - IPv6 prefix length must be 0-128
+ *
+ * @param cidr - The CIDR string to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidCIDR(cidr: string): boolean {
+  try {
+    // ipaddr.parseCIDR returns [IPv4 | IPv6, number] or throws
+    const [addr, prefixLength] = ipaddr.parseCIDR(cidr);
+
+    // Additional validation: ensure prefix length is within valid range
+    // ipaddr.js already validates this, but we double-check for safety
+    if (addr.kind() === "ipv4") {
+      return prefixLength >= 0 && prefixLength <= 32;
+    }
+    if (addr.kind() === "ipv6") {
+      return prefixLength >= 0 && prefixLength <= 128;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export const DANGEROUS_CHARS = [
   ";",
@@ -60,18 +111,24 @@ export function validateTarget(target: string): void {
 
   // Additional validation for common patterns
   if (target.includes("..") || target.startsWith("/") || target.includes("~")) {
-    throw new Error("Invalid path patterns in target");
-  }
-
-  // Validate target format (hostname, IP, or Tailscale node name)
-  if (!VALID_TARGET_PATTERN.test(target)) {
-    throw new Error("Target contains invalid characters");
+    throw new Error("Target contains invalid characters or format");
   }
 
   // Length validation
   if (target.length > 253) {
     // DNS hostname max length
     throw new Error("Target too long");
+  }
+
+  // Validate target format: must be a valid IP address or hostname
+  // First try to parse as IP address using ipaddr.js for proper validation
+  if (isValidIPAddress(target)) {
+    return; // Valid IP address
+  }
+
+  // If not an IP, validate as hostname
+  if (!VALID_HOSTNAME_PATTERN.test(target)) {
+    throw new Error("Target must be a valid IP address or hostname");
   }
 }
 
@@ -103,13 +160,14 @@ export function validateRoutes(routes: string[]): void {
       throw new TypeError("Each route must be a string");
     }
 
-    // Basic CIDR validation
-    if (
-      !CIDR_PATTERN.test(route) &&
-      route !== "0.0.0.0/0" &&
-      route !== "::/0"
-    ) {
-      throw new Error(`Invalid route format: ${route}`);
+    // Proper CIDR validation using ipaddr.js
+    // This validates:
+    // - IPv4 octets are 0-255
+    // - IPv6 segments are valid hex
+    // - IPv4 prefix length is 0-32
+    // - IPv6 prefix length is 0-128
+    if (!isValidCIDR(route)) {
+      throw new Error(`Invalid CIDR format: ${route}`);
     }
   }
 }
