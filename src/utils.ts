@@ -126,6 +126,19 @@ export function validateTarget(target: string): void {
     return; // Valid IP address
   }
 
+  // Check if it looks like an IPv4 address (digits and dots only)
+  // If so, it must be validated as IP, not hostname
+  const looksLikeIPv4 = /^\d+(\.\d+)*$/.test(target);
+  if (looksLikeIPv4) {
+    throw new Error("Invalid IPv4 address format");
+  }
+
+  // Check if it looks like an IPv6 address (contains colons)
+  // If so, it must be validated as IP, not hostname
+  if (target.includes(":")) {
+    throw new Error("Invalid IPv6 address format");
+  }
+
   // If not an IP, validate as hostname
   if (!VALID_HOSTNAME_PATTERN.test(target)) {
     throw new Error("Target must be a valid IP address or hostname");
