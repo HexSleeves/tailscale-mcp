@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { isAxiosError } from "axios";
-import * as ipaddr from "ipaddr.js";
+import ipaddrModule from "ipaddr.js";
+const ipaddr = ipaddrModule;
 import { logger } from "./logger.js";
 import { CLIError, TailscaleError } from "./types.js";
 

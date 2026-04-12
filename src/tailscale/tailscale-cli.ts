@@ -237,7 +237,7 @@ export class TailscaleCLI {
       );
     }
 
-    return await this.executeCommand(["ping", target, "-c", count.toString()]);
+    return await this.executeCommand(["ping", `--c=${count}`, target]);
   }
 
   /**
