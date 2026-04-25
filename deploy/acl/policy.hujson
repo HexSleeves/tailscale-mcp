@@ -1,0 +1,55 @@
+// Tailscale ACL policy for tailscale-mcp
+// HuJSON format: C-style comments and trailing commas are allowed.
+// Apply this at https://login.tailscale.com/admin/acls
+{
+  // Tag ownership: only admins may tag nodes as mcp-server.
+  "tagOwners": {
+    "tag:mcp-server": ["autogroup:admin"],
+  },
+
+  // ACL rules: who can reach what on which ports.
+  "acls": [
+    // All tailnet members can reach the MCP server on HTTPS (443).
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:mcp-server:443"],
+    },
+  ],
+
+  // Grants attach fine-grained capability tokens to connections.
+  // The MCP server reads these from the Tailscale LocalAPI to enforce
+  // tool-level authorization.
+
+  // devops group: full read/write access to MCP tools.
+  {
+    "grants": [
+      {
+        "src": ["group:devops"],
+        "dst": ["tag:mcp-server"],
+        "ip":  ["*"],
+        "app": {
+          "tailscale.com/cap/mcp": [
+            {
+              "tools": ["devices/*", "network/status", "acl/get"],
+            },
+          ],
+        },
+      },
+
+      // read-only group: restricted to non-mutating tools only.
+      {
+        "src": ["group:read-only"],
+        "dst": ["tag:mcp-server"],
+        "ip":  ["*"],
+        "app": {
+          "tailscale.com/cap/mcp": [
+            {
+              "tools": ["devices/list", "network/status", "acl/get"],
+            },
+          ],
+        },
+      },
+    ],
+  },
+}

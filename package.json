@@ -1,7 +1,7 @@
 {
   "name": "@hexsleeves/tailscale-mcp-server",
-  "version": "0.3.2",
-  "description": "A Model Context Protocol (MCP) server that provides seamless integration with Tailscale's CLI commands and REST API, enabling automated network management and monitoring through a standardized interface.",
+  "version": "1.0.0-rc.1",
+  "description": "MCP server for Tailscale CLI + REST API.",
   "keywords": [
     "tailscale",
     "mcp",
@@ -12,70 +12,42 @@
   "author": "HexSleeves",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
   "bin": {
-    "tailscale-mcp-server": "./dist/index.js"
+    "tailscale-mcp-server": "./dist/server"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
   },
   "files": [
     "dist/**/*",
     "README.md",
     "LICENSE"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
   "scripts": {
-    "clean": "rimraf dist",
-    "build": "bun esbuild.config.js build",
-    "build:dev": "bun esbuild.config.js dev",
-    "build:watch": "bun esbuild.config.js watch",
-    "start": "bun dist/index.js",
-    "dev": "bun run build:dev && bun dist/index.js",
-    "dev:watch": "bun run build:watch",
-    "dev:direct": "tsx src/index.ts",
+    "dev": "bun --hot src/main.ts",
+    "start": "bun src/main.ts",
+    "build": "bun build src/main.ts --compile --target=bun --outfile=dist/server",
+    "build:node": "bun build src/main.ts --target=node --format=esm --outfile=dist/server.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "biome lint .",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "check": "biome check .",
-    "check:fix": "biome check --write .",
     "test": "bun test",
-    "test:unit": "bun test ./src/__test__/utils/ ./src/__test__/tailscale/oauth.test.ts",
-    "test:integration": "bun test ./src/__test__/tailscale/*.integration.test.ts",
-    "test:coverage": "bun test --coverage",
-    "test:ci": "bun test ./src/__test__/utils/",
-    "test:unit:ci": "npm run test:ci",
-    "test:integration:ci": "bun test --coverage --testNamePattern='integration'",
-    "test:setup": "./scripts/setup-testing.sh",
-    "qa": "bun run typecheck && bun run test:unit && bun run check",
-    "qa:full": "bun run typecheck && bun run test && bun run check",
-    "inspector": "bunx @modelcontextprotocol/inspector bun dist/index.js",
-    "prepublishOnly": "bun run build",
-    "publish": "./scripts/publish.sh",
-    "publish:test": "./scripts/test-publish.sh"
+    "test:cov": "bun test --coverage",
+    "inspector": "bunx @modelcontextprotocol/inspector bun src/main.ts",
+    "audit": "bun audit",
+    "qa": "bun run typecheck && bun run lint && bun run test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.3",
-    "axios": "^1.13.4",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "hono": "4.12.15",
     "ipaddr.js": "2.3.0",
-    "zod": "^4.3.6"
+    "pino": "10.3.1",
+    "zod": "4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.13",
+    "@biomejs/biome": "2.4.13",
     "@types/bun": "latest",
-    "@types/express": "^5.0.6",
-    "@types/json-schema": "7.0.15",
-    "@types/node": "^25.0.10",
-    "audit-ci": "^7.1.0",
-    "esbuild": "^0.27.2",
-    "rimraf": "^6.1.2",
-    "semver": "^7.7.3",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "6.0.3"
   }
 }

@@ -592,29 +592,6 @@ export interface TailscaleConfig {
   apiBaseUrl?: string;
 }
 
-// Error types
-export class TailscaleError extends Error {
-  constructor(
-    message: string,
-    public readonly code?: string,
-    public readonly statusCode?: number,
-  ) {
-    super(message);
-    this.name = "TailscaleError";
-  }
-}
-
-export class CLIError extends Error {
-  constructor(
-    message: string,
-    public readonly stderr?: string,
-    public readonly exitCode?: number,
-  ) {
-    super(message);
-    this.name = "CLIError";
-  }
-}
-
 // Type exports
 export type TailscaleDevice = z.infer<typeof TailscaleDeviceSchema>;
 export type TailscaleNetworkStatus = z.infer<

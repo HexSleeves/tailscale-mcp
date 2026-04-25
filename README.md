@@ -12,11 +12,11 @@ A modern [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server 
 - **Docker Hub**: [`hexsleeves/tailscale-mcp-server`](https://hub.docker.com/r/hexsleeves/tailscale-mcp-server)
 - **GitHub Container Registry**: [`ghcr.io/hexsleeves/tailscale-mcp-server`](https://github.com/users/HexSleeves/packages/container/package/tailscale-mcp-server)
 
-## 🚀 Recommended Package Manager
+## 🚀 Runtime
 
-This project is optimized for **[Bun](https://bun.sh)** for faster installation and execution. NPM is supported as a fallback option.
+This project requires **[Bun](https://bun.sh) ≥ 1.3** (see `engines.bun` in `package.json`). Bun runs TypeScript natively, ships its own bundler, and replaces the need for `node`, `tsx`, `esbuild`, or `dotenv` here.
 
-### Quick Setup with Bun
+### Quick Setup
 
 ```bash
 # Install Bun (if not already installed)
@@ -25,9 +25,8 @@ curl -fsSL https://bun.sh/install | bash
 # Install dependencies
 bun install
 
-# Build and run
-bun run build
-bun start
+# Configure
+cp deploy/.env.example .env  # fill TAILSCALE_API_KEY (or OAuth) + TAILSCALE_TAILNET
 ```
 
 ### Fallback with NPM
@@ -52,7 +51,7 @@ npm start
 This project includes comprehensive documentation organized by domain:
 
 - **[🔧 CI/CD Workflows](docs/workflows.md)** - GitHub Actions, testing pipelines, and release automation
-- **[🧪 Testing Strategy](src/__test__/README.md)** - Unit tests, integration tests, and testing best practices
+- **[🧪 Testing Strategy](tests/)** - Unit tests, integration tests, and testing best practices
 - **[🐳 Docker Guide](docs/docker.md)** - Container usage, development workflows, and deployment strategies
 
 ## Quick Start
@@ -146,12 +145,17 @@ Add to your Claude Desktop configuration (`~/.claude/claude_desktop_config.json`
 
 #### General Configuration
 
-| Variable                 | Description            | Required | Default                     |
-| ------------------------ | ---------------------- | -------- | --------------------------- |
-| `TAILSCALE_TAILNET`      | Tailscale tailnet name | Yes\*    | -                           |
-| `TAILSCALE_API_BASE_URL` | API base URL           | No       | `https://api.tailscale.com` |
-| `LOG_LEVEL`              | Logging level (0-3)    | No       | `1` (INFO)                  |
-| `MCP_SERVER_LOG_FILE`    | Server log file path   | No       | -                           |
+| Variable                  | Description                                      | Required | Default                     |
+| ------------------------- | ------------------------------------------------ | -------- | --------------------------- |
+| `TAILSCALE_TAILNET`       | Tailscale tailnet name                           | Yes\*    | -                           |
+| `TAILSCALE_API_BASE_URL`  | API base URL                                     | No       | `https://api.tailscale.com` |
+| `TAILSCALE_CLI_PATH`      | Path to the `tailscale` CLI binary               | No       | `tailscale`                 |
+| `TRANSPORT`               | `stdio` or `http`                                | No       | `stdio`                     |
+| `HTTP_PORT`               | HTTP transport port                              | No       | `3000`                      |
+| `HTTP_HOST`               | HTTP bind address                                | No       | `0.0.0.0`                   |
+| `HTTP_ALLOWED_HOSTS`      | CSV of allowed `Host` header values (rebind protection) | No | `localhost,127.0.0.1,::1`   |
+| `HTTP_ALLOWED_ORIGINS`    | CSV of allowed `Origin` values (CORS / rebind)   | No       | derived from hosts          |
+| `LOG_LEVEL`               | `trace`/`debug`/`info`/`warn`/`error`            | No       | `info`                      |
 
 \*Required for API-based operations. CLI operations work without API credentials.
 
@@ -250,51 +254,32 @@ bun install  # or: npm install
 cp .env.example .env
 # Edit .env with your Tailscale credentials
 
-# Build and run
-bun run build  # or: npm run build
-bun start      # or: npm start
+# Develop (Bun runs TypeScript natively)
+bun run dev
+
+# Or compile a single-binary executable
+bun run build
+./dist/server
 ```
 
 ### Development Commands
 
 ```bash
-# Development workflow (Bun recommended)
-bun run dev:direct        # Fast development with tsx
-bun run dev:watch         # Auto-rebuild on changes
-bun run build:watch       # Build with file watching
+bun run dev                # bun --hot src/main.ts
+bun run start              # bun src/main.ts
+bun run build              # compile to dist/server (Bun-native)
+bun run build:node         # ESM bundle for Node deployments
 
-# Development workflow (NPM fallback)
-npm run dev:direct
-npm run dev:watch
-npm run build:watch
+bun test                   # all tests
+bun run test:cov           # tests + coverage
 
-# Testing (Bun recommended)
-bun test                  # All tests
-bun run test:unit         # Unit tests only
-bun run test:integration  # Integration tests (requires Tailscale CLI)
-bun run test:watch        # Watch mode
+bun run typecheck          # tsc --noEmit
+bun run lint               # biome check .
+bun run lint:fix           # biome check --write .
+bun run qa                 # typecheck + lint + tests
 
-# Testing (NPM fallback)
-npm test
-npm run test:unit
-npm run test:integration
-npm run test:watch
-
-# Quality assurance (Bun recommended)
-bun run qa                # Quick QA (typecheck + unit tests + lint)
-bun run qa:full           # Full QA (all tests + checks)
-bun run typecheck         # TypeScript validation
-
-# Quality assurance (NPM fallback)
-npm run qa
-npm run qa:full
-npm run typecheck
-
-# Tools (Bun recommended)
-bun run inspector         # Test with MCP Inspector
-
-# Tools (NPM fallback)
-npm run inspector
+bun run inspector          # MCP Inspector against src/main.ts
+bun run audit              # bun audit
 ```
 
 ### Local Claude Desktop Configuration
@@ -303,49 +288,75 @@ npm run inspector
 {
   "mcpServers": {
     "tailscale-dev": {
-      "command": "node",
-      "args": ["/path/to/your/tailscale-mcp-server/dist/index.js"],
+      "command": "bun",
+      "args": ["/path/to/tailscale-mcp/src/main.ts"],
       "env": {
-        "TAILSCALE_API_KEY": "your-api-key-here",
-        "TAILSCALE_TAILNET": "your-tailnet-name",
-        "LOG_LEVEL": "0"
+        "TAILSCALE_API_KEY": "tskey-api-...",
+        "TAILSCALE_TAILNET": "your-tailnet.ts.net",
+        "TRANSPORT": "stdio",
+        "LOG_LEVEL": "info"
       }
     }
   }
 }
 ```
 
-> **📖 For comprehensive development guides, testing strategies, and CI/CD information:**
->
-> - **[Testing Documentation](src/__test__/README.md)** - Unit tests, integration tests, coverage
-> - **[Docker Development](docs/docker.md)** - Container-based development workflows
-> - **[CI/CD Workflows](docs/workflows.md)** - GitHub Actions, automation, releases
+For HTTP transport behind a Tailscale sidecar, see **[deploy/README.md](deploy/README.md)**.
 
 ### Project Structure
 
-```bash
+```text
 src/
-├── server.ts              # Main server implementation
-├── tools/                 # Modular tool definitions
-├── tailscale/             # Tailscale integrations
-├── types.ts               # Type definitions
-├── logger.ts              # Logging utilities
-└── index.ts               # Entry point
+├── main.ts                # entry: env → logger → server → transport
+├── server.ts              # createMcpServer() — registers tools
+├── config.ts              # zod-validated env
+├── logger.ts              # pino, stderr only
+├── errors.ts              # TailscaleError / CLIError / ValidationError
+├── lib/
+│   ├── tool.ts            # defineTool() helper (registers w/ McpServer)
+│   └── validate.ts        # CIDR/host/string input guards
+├── tailscale/
+│   ├── tailscale-api.ts   # REST client (fetch, OAuth + API key)
+│   ├── tailscale-cli.ts   # execFile wrapper, no shell
+│   └── oauth.ts           # OAuth 2.0 client-credentials flow
+├── tools/
+│   ├── index.ts           # registerAllTools()
+│   ├── devices.ts         # list_devices, device_action, manage_routes
+│   ├── network.ts         # network_status, ping_peer, up/down, get_version
+│   ├── acl.ts             # manage_acl
+│   └── admin.ts           # manage_dns, manage_keys, tailnet_info
+├── transports/
+│   ├── stdio.ts           # MCP over stdin/stdout
+│   └── http.ts            # Streamable HTTP (DNS-rebind protection on)
+└── types.ts               # zod schemas for API/CLI responses
+
+tests/
+├── setup.ts               # bun:test preload (pinned env)
+└── unit/                  # config / errors / validate
+
+deploy/
+├── Dockerfile             # Bun → distroless, single-binary
+├── docker-compose.yml     # Tailscale sidecar + app
+├── tailscale/serve.json   # tailnet-only HTTPS, Funnel disabled
+├── acl/policy.hujson      # tag:mcp-server + grants example
+└── README.md              # operator guide
 ```
 
 ### Adding New Tools
 
-Create a tool module in `src/tools/` and register it in `src/server.ts`. See existing tools for examples of the modular architecture using Zod schemas and TypeScript.
+Add a registration function in `src/tools/<area>.ts` using `defineTool(server, ctx, { name, title, description, inputSchema, outputSchema?, handler })`. Wire it up in `src/tools/index.ts`. Zod input/output schemas become the JSON Schema the MCP client sees, and `outputSchema` enables `structuredContent` responses.
 
 ### Debugging
 
 ```bash
-# Enable debug logging
-export LOG_LEVEL=0
-export MCP_SERVER_LOG_FILE=debug-{timestamp}.log
+# Stderr structured logs (pino JSON)
+LOG_LEVEL=debug bun src/main.ts
 
-# View logs
-tail -f logs/debug-*.log
+# Pretty logs in dev (auto-detected when NODE_ENV=development)
+NODE_ENV=development bun --hot src/main.ts
+
+# Talk to it interactively
+bun run inspector
 ```
 
 ## API Reference
@@ -384,13 +395,13 @@ tail -f logs/debug-*.log
 
 - Use TypeScript for all new code
 - Add Zod schemas for input validation
-- Include tests for new tools (see [Testing Guide](src/__test__/README.md))
+- Include tests for new tools (see [Testing Guide](tests/))
 - Follow the existing modular architecture
 - Update documentation for new features
 
 ### Resources for Contributors
 
-- **[Testing Strategy](src/__test__/README.md)** - How to write and run tests
+- **[Testing Strategy](tests/)** - How to write and run tests
 - **[CI/CD Workflows](docs/workflows.md)** - Understanding the automation pipeline
 - **[Docker Development](docs/docker.md)** - Container-based development workflows
 

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.12/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
@@ -61,7 +61,8 @@
   "files": {
     "includes": [
       "**/src/**/*",
-      "**/scripts/**/*",
+      "**/tests/**/*",
+      "**/deploy/**/*",
       "**/*.ts",
       "**/*.js",
       "**/*.json",
@@ -69,7 +70,6 @@
       "!**/coverage/**/*",
       "!**/node_modules/**/*",
       "!**/*.config.js",
-      "!**/jest.config*.ts",
       "!**/package-lock.json",
       "!**/bun.lockb"
     ]

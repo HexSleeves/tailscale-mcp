@@ -13,7 +13,7 @@ services:
       TS_USERSPACE: "false"
     volumes:
       - ts-state:/var/lib/tailscale
-      - ./deploy/tailscale/serve.json:/config/serve.json:ro
+      - ./tailscale/serve.json:/config/serve.json:ro
       - /dev/net/tun:/dev/net/tun
     cap_add: [NET_ADMIN, NET_RAW]
     restart: unless-stopped
@@ -25,8 +25,8 @@ services:
 
   app:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     image: ghcr.io/hexsleeves/tailscale-mcp-server:1.0.0-rc.1
     network_mode: service:ts-mcp
     depends_on:

@@ -1,242 +1,186 @@
-import axios, {
-  AxiosError,
-  type AxiosInstance,
-  type AxiosResponse,
-  type InternalAxiosRequestConfig,
-} from "axios";
 import { ZodError } from "zod";
-import { logger } from "../logger";
-import {
-  type ACLTestResult,
-  type ACLValidationResult,
-  type AuditLogList,
-  type AuthKeyList,
-  type CreateAuthKeyRequest,
-  type DevicePosture,
-  type DeviceRoutes,
-  type DeviceStats,
-  type NetworkLockStatus,
-  type NetworkStats,
-  type PosturePolicy,
-  type SSHSettings,
-  type TailnetInfo,
-  type TailscaleAPIResponse,
-  type TailscaleConfig,
-  type TailscaleDevice,
-  TailscaleDeviceSchema,
-  type User,
-  type UserList,
-  type Webhook,
-  type WebhookList,
-} from "../types";
-import { TailscaleOAuthManager } from "./oauth";
+import { getErrorMessage } from "../errors.ts";
+import type { Logger } from "../logger.ts";
+import type {
+  ACLTestResult,
+  ACLValidationResult,
+  AuditLogList,
+  AuthKeyList,
+  CreateAuthKeyRequest,
+  DevicePosture,
+  DeviceRoutes,
+  DeviceStats,
+  NetworkLockStatus,
+  NetworkStats,
+  PosturePolicy,
+  SSHSettings,
+  TailnetInfo,
+  TailscaleAPIResponse,
+  TailscaleConfig,
+  TailscaleDevice,
+  User,
+  UserList,
+  Webhook,
+  WebhookList,
+} from "../types.ts";
+import { TailscaleDeviceSchema } from "../types.ts";
+import { TailscaleOAuthManager } from "./oauth.ts";
 
 export type AuthMode = "api_key" | "oauth" | "none";
 
+function reshapeError<T>(r: {
+  success: boolean;
+  error?: string;
+  statusCode?: number;
+}): TailscaleAPIResponse<T> {
+  return { success: false, error: r.error, statusCode: r.statusCode };
+}
+
 export class TailscaleAPI {
-  private readonly client: AxiosInstance;
+  private readonly log: Logger;
   private readonly tailnet: string;
-
+  private readonly baseUrl: string;
+  private readonly apiKey: string | undefined;
   private readonly authMode: AuthMode;
-  private readonly oauthManager: TailscaleOAuthManager | null = null;
+  private readonly oauth: TailscaleOAuthManager | null;
 
-  constructor(config: TailscaleConfig = {}) {
-    const apiKey = config.apiKey || process.env.TAILSCALE_API_KEY;
-    const oauthClientId =
-      config.oauthClientId || process.env.TAILSCALE_OAUTH_CLIENT_ID;
-    const oauthClientSecret =
-      config.oauthClientSecret || process.env.TAILSCALE_OAUTH_CLIENT_SECRET;
-    const tailnet = config.tailnet || process.env.TAILSCALE_TAILNET || "-";
-    const baseUrl =
-      config.apiBaseUrl ||
-      process.env.TAILSCALE_API_BASE_URL ||
+  constructor(
+    config: TailscaleConfig,
+    deps: { log: Logger; oauth?: TailscaleOAuthManager },
+  ) {
+    this.log = deps.log;
+    this.oauth = deps.oauth ?? null;
+
+    const apiKey = config.apiKey ?? process.env.TAILSCALE_API_KEY;
+    this.tailnet = config.tailnet ?? process.env.TAILSCALE_TAILNET ?? "-";
+    this.baseUrl =
+      config.apiBaseUrl ??
+      process.env.TAILSCALE_API_BASE_URL ??
       "https://api.tailscale.com";
 
-    // Determine auth mode
-    if (oauthClientId && oauthClientSecret) {
+    if (this.oauth) {
       this.authMode = "oauth";
-      this.oauthManager = new TailscaleOAuthManager({
-        clientId: oauthClientId,
-        clientSecret: oauthClientSecret,
-        baseUrl,
-      });
-      logger.info(
+      this.apiKey = undefined;
+      this.log.info(
         "Using OAuth authentication for Tailscale API (scoped permissions)",
       );
     } else if (apiKey) {
       this.authMode = "api_key";
-      logger.debug("Using API key authentication for Tailscale API");
+      this.apiKey = apiKey;
+      this.log.debug("Using API key authentication for Tailscale API");
     } else {
       this.authMode = "none";
-      logger.warn(
+      this.apiKey = undefined;
+      this.log.warn(
         "No Tailscale credentials provided. API operations will fail. Set TAILSCALE_API_KEY or TAILSCALE_OAUTH_CLIENT_ID/SECRET.",
       );
     }
-
-    this.tailnet = tailnet;
-    this.client = axios.create({
-      timeout: 30000,
-      baseURL: `${baseUrl}/api/v2`,
-      headers: {
-        // For API key auth, set static header; for OAuth, we'll set it dynamically
-        Authorization:
-          this.authMode === "api_key" && apiKey ? `Bearer ${apiKey}` : "",
-        "Content-Type": "application/json",
-      },
-    });
-
-    // Add request interceptor for OAuth token injection and logging
-    this.client.interceptors.request.use(
-      async (config: InternalAxiosRequestConfig) => {
-        // Inject OAuth token if using OAuth auth
-        if (this.authMode === "oauth" && this.oauthManager) {
-          try {
-            const token = await this.oauthManager.getAccessToken();
-            config.headers.Authorization = `Bearer ${token}`;
-          } catch (error) {
-            logger.error("Failed to get OAuth token for request:", error);
-            throw error;
-          }
-        }
-
-        logger.debug(
-          `API Request: ${config.method?.toUpperCase()} ${config.url}`,
-        );
-        return config;
-      },
-      (error) => {
-        logger.error("API Request Error:", {
-          url: error.config?.url,
-          method: error.config?.method,
-          status: error.response?.status,
-          message: error.message,
-        });
-        return Promise.reject(error);
-      },
-    );
-
-    this.client.interceptors.response.use(
-      (response) => {
-        logger.debug(`API Response: ${response.status} ${response.config.url}`);
-        return response;
-      },
-      (error) => {
-        logger.error("API Response Error:", {
-          url: error.config?.url,
-          status: error.response?.status,
-          data: error.response?.data,
-        });
-        return Promise.reject(error);
-      },
-    );
   }
 
-  /**
-   * Get the current authentication mode
-   */
   getAuthMode(): AuthMode {
     return this.authMode;
   }
 
-  /**
-   * Handle API response and convert to standardized format
-   */
-  private handleResponse<T>(
-    response: AxiosResponse<T>,
-  ): TailscaleAPIResponse<T> {
-    return {
-      success: true,
-      data: response.data,
-      statusCode: response.status,
-    };
-  }
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<TailscaleAPIResponse<T>> {
+    const url = `${this.baseUrl}/api/v2${path}`;
 
-  /**
-   * Handle API errors and convert to standardized format
-   */
-  private handleError(error: unknown): TailscaleAPIResponse<never> {
-    if (error instanceof AxiosError) {
-      // API returned an error response
-      const status = error.response?.status;
-      const message =
-        error.response?.data?.message ??
-        error.response?.data?.error ??
-        `HTTP ${status}`;
-
-      return {
-        success: false,
-        error: message,
-        statusCode: status,
-      };
+    let authHeader: string;
+    if (this.authMode === "oauth" && this.oauth) {
+      try {
+        const token = await this.oauth.getAccessToken();
+        authHeader = `Bearer ${token}`;
+      } catch (err) {
+        return { success: false, error: getErrorMessage(err) };
+      }
+    } else if (this.authMode === "api_key" && this.apiKey) {
+      authHeader = `Basic ${btoa(`${this.apiKey}:`)}`;
+    } else {
+      authHeader = "";
     }
 
-    if (error instanceof Error) {
-      // Network or other Error instance
-      return {
-        success: false,
-        error:
-          error.message || "Network error: Unable to connect to Tailscale API",
-        statusCode: 0,
-      };
+    const headers: Record<string, string> = { Authorization: authHeader };
+    if (body !== undefined) {
+      headers["Content-Type"] = "application/json";
     }
 
-    // Unknown error type
-    return {
-      success: false,
-      error: String(error) || "Unknown error occurred",
-      statusCode: 0,
-    };
-  }
+    this.log.debug(`API Request: ${method.toUpperCase()} ${url}`);
 
-  /**
-   * List all devices in the tailnet
-   */
-  async listDevices(): Promise<TailscaleAPIResponse<TailscaleDevice[]>> {
+    let response: Response;
     try {
-      const response = await this.client.get<{ devices: TailscaleDevice[] }>(
-        `/tailnet/${this.tailnet}/devices`,
-      );
-
-      // Validate and parse devices
-      const devices = response.data.devices
-        ?.map((device) => {
-          try {
-            return TailscaleDeviceSchema.parse(device);
-          } catch (parseError) {
-            logger.warn("Failed to parse device:", {
-              device,
-              error: parseError,
-            });
-            return null;
-          }
-        })
-        .filter(
-          (d: TailscaleDevice | null): d is TailscaleDevice => d !== null,
-        );
-
-      return this.handleResponse<TailscaleDevice[]>({
-        data: devices,
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-        config: response.config,
+      response = await fetch(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
       });
-    } catch (error) {
-      return this.handleError(error);
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
     }
+
+    this.log.debug(`API Response: ${response.status} ${url}`);
+
+    if (response.ok) {
+      if (response.status === 204) {
+        return {
+          success: true,
+          data: undefined as T,
+          statusCode: response.status,
+        };
+      }
+      const data = (await response.json()) as T;
+      return { success: true, data, statusCode: response.status };
+    }
+
+    let errMsg = response.statusText;
+    try {
+      const errBody = (await response.json()) as Record<string, unknown>;
+      if (typeof errBody.message === "string") {
+        errMsg = errBody.message;
+      } else if (typeof errBody.error === "string") {
+        errMsg = errBody.error;
+      }
+    } catch {
+      // ignore parse failure
+    }
+
+    return { success: false, error: errMsg, statusCode: response.status };
   }
 
-  /**
-   * Get a specific device by ID
-   */
+  async listDevices(): Promise<TailscaleAPIResponse<TailscaleDevice[]>> {
+    const result = await this.request<{ devices: TailscaleDevice[] }>(
+      "GET",
+      `/tailnet/${this.tailnet}/devices`,
+    );
+
+    if (!result.success) return reshapeError(result);
+
+    const devices = (result.data?.devices ?? [])
+      .map((device) => {
+        try {
+          return TailscaleDeviceSchema.parse(device);
+        } catch (parseError) {
+          this.log.warn({ device, err: parseError }, "Failed to parse device");
+          return null;
+        }
+      })
+      .filter((d): d is TailscaleDevice => d !== null);
+
+    return { success: true, data: devices, statusCode: result.statusCode };
+  }
+
   async getDevice(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<TailscaleDevice>> {
-    try {
-      const response = await this.client.get(`/device/${deviceId}`);
-      const device = TailscaleDeviceSchema.parse(response.data);
+    const result = await this.request<unknown>("GET", `/device/${deviceId}`);
+    if (!result.success) return reshapeError(result);
 
-      return this.handleResponse({ ...response, data: device });
+    try {
+      const device = TailscaleDeviceSchema.parse(result.data);
+      return { success: true, data: device, statusCode: result.statusCode };
     } catch (error) {
       if (error instanceof ZodError) {
         return {
@@ -244,160 +188,77 @@ export class TailscaleAPI {
           error: "Invalid device data received from API",
         };
       }
-      return this.handleError(error);
+      return { success: false, error: getErrorMessage(error) };
     }
   }
 
-  /**
-   * Authorize a device
-   */
   async authorizeDevice(deviceId: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/device/${deviceId}/authorized`,
-        {
-          authorized: true,
-        },
-      );
-
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/device/${deviceId}/authorized`, {
+      authorized: true,
+    });
   }
 
-  /**
-   * Deauthorize a device
-   */
   async deauthorizeDevice(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/device/${deviceId}/authorized`,
-        {
-          authorized: false,
-        },
-      );
-
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/device/${deviceId}/authorized`, {
+      authorized: false,
+    });
   }
 
-  /**
-   * Delete a device
-   */
   async deleteDevice(deviceId: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.delete(`/device/${deviceId}`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("DELETE", `/device/${deviceId}`);
   }
 
-  /**
-   * Expire device key
-   */
   async expireDeviceKey(deviceId: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(`/device/${deviceId}/expire`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/device/${deviceId}/expire`);
   }
 
-  /**
-   * Enable device routes
-   */
   async enableDeviceRoutes(
     deviceId: string,
     routes: string[],
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(`/device/${deviceId}/routes`, {
-        routes: routes,
-      });
-
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/device/${deviceId}/routes`, { routes });
   }
 
-  /**
-   * Disable device routes
-   */
   async disableDeviceRoutes(
     deviceId: string,
     routes: string[],
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.delete(`/device/${deviceId}/routes`, {
-        data: { routes: routes },
-      });
-
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("DELETE", `/device/${deviceId}/routes`, {
+      routes,
+    });
   }
 
-  /**
-   * Get tailnet information
-   */
   async getTailnetInfo(): Promise<TailscaleAPIResponse<TailnetInfo>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<TailnetInfo>("GET", `/tailnet/${this.tailnet}`);
   }
 
-  /**
-   * Test API connectivity
-   */
   async testConnection(): Promise<TailscaleAPIResponse<{ status: string }>> {
-    try {
-      // TODO: Send a random request to the API to test connectivity
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/devices`,
-      );
-      return this.handleResponse({
-        ...response,
+    const result = await this.request<unknown>(
+      "GET",
+      `/tailnet/${this.tailnet}/devices?limit=1`,
+    );
+    if (result.success) {
+      return {
+        success: true,
         data: { status: "connected" },
-      });
-    } catch (error) {
-      return this.handleError(error);
+        statusCode: result.statusCode,
+      };
     }
+    return reshapeError(result);
   }
 
-  /**
-   * Get version information (API version info)
-   * Note: This returns API version info, not CLI version
-   */
   async getVersion(): Promise<
     TailscaleAPIResponse<{ version: string; apiVersion: string }>
   > {
-    // Since there's no direct version endpoint, we'll return static API version info
     return {
       success: true,
-      data: {
-        version: "API v2",
-        apiVersion: "2.0",
-      },
+      data: { version: "API v2", apiVersion: "2.0" },
       statusCode: 200,
     };
   }
 
-  /**
-   * Connect to network (API equivalent of CLI 'up')
-   * Note: API doesn't directly support network connection, returns informational message
-   */
   async connect(): Promise<TailscaleAPIResponse<{ message: string }>> {
     return {
       success: false,
@@ -407,10 +268,6 @@ export class TailscaleAPI {
     };
   }
 
-  /**
-   * Disconnect from network (API equivalent of CLI 'down')
-   * Note: API doesn't directly support network disconnection, returns informational message
-   */
   async disconnect(): Promise<TailscaleAPIResponse<{ message: string }>> {
     return {
       success: false,
@@ -420,253 +277,216 @@ export class TailscaleAPI {
     };
   }
 
-  /**
-   * Get ACL configuration
-   */
   async getACL(): Promise<TailscaleAPIResponse<string>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/acl`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<string>("GET", `/tailnet/${this.tailnet}/acl`);
   }
 
-  /**
-   * Update ACL configuration
-   */
   async updateACL(aclConfig: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/acl`,
-        aclConfig,
-        {
-          headers: {
-            "Content-Type": "application/hujson",
-          },
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
+    const url = `/tailnet/${this.tailnet}/acl`;
+    const fullUrl = `${this.baseUrl}/api/v2${url}`;
+
+    let authHeader: string;
+    if (this.authMode === "oauth" && this.oauth) {
+      try {
+        const token = await this.oauth.getAccessToken();
+        authHeader = `Bearer ${token}`;
+      } catch (err) {
+        return { success: false, error: getErrorMessage(err) };
+      }
+    } else if (this.authMode === "api_key" && this.apiKey) {
+      authHeader = `Basic ${btoa(`${this.apiKey}:`)}`;
+    } else {
+      authHeader = "";
     }
+
+    let response: Response;
+    try {
+      response = await fetch(fullUrl, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/hujson",
+        },
+        body: aclConfig,
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+
+    if (response.ok) {
+      return { success: true, data: undefined, statusCode: response.status };
+    }
+
+    let errMsg = response.statusText;
+    try {
+      const errBody = (await response.json()) as Record<string, unknown>;
+      if (typeof errBody.message === "string") errMsg = errBody.message;
+      else if (typeof errBody.error === "string") errMsg = errBody.error;
+    } catch {
+      /* ignore */
+    }
+
+    return { success: false, error: errMsg, statusCode: response.status };
   }
 
-  /**
-   * Validate ACL configuration
-   */
   async validateACL(
     aclConfig: string,
   ): Promise<TailscaleAPIResponse<ACLValidationResult>> {
+    const url = `/tailnet/${this.tailnet}/acl/validate`;
+    const fullUrl = `${this.baseUrl}/api/v2${url}`;
+
+    let authHeader: string;
+    if (this.authMode === "oauth" && this.oauth) {
+      try {
+        const token = await this.oauth.getAccessToken();
+        authHeader = `Bearer ${token}`;
+      } catch (err) {
+        return { success: false, error: getErrorMessage(err) };
+      }
+    } else if (this.authMode === "api_key" && this.apiKey) {
+      authHeader = `Basic ${btoa(`${this.apiKey}:`)}`;
+    } else {
+      authHeader = "";
+    }
+
+    let response: Response;
     try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/acl/validate`,
-        aclConfig,
-        {
-          headers: {
-            "Content-Type": "application/hujson",
-          },
+      response = await fetch(fullUrl, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/hujson",
         },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
+        body: aclConfig,
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
     }
-  }
 
-  /**
-   * Get DNS nameservers
-   */
-  async getDNSNameservers(): Promise<TailscaleAPIResponse<{ dns: string[] }>> {
+    if (response.ok) {
+      if (response.status === 204)
+        return {
+          success: true,
+          data: undefined as unknown as ACLValidationResult,
+          statusCode: response.status,
+        };
+      const data = (await response.json()) as ACLValidationResult;
+      return { success: true, data, statusCode: response.status };
+    }
+
+    let errMsg = response.statusText;
     try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/dns/nameservers`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
+      const errBody = (await response.json()) as Record<string, unknown>;
+      if (typeof errBody.message === "string") errMsg = errBody.message;
+      else if (typeof errBody.error === "string") errMsg = errBody.error;
+    } catch {
+      /* ignore */
     }
+
+    return { success: false, error: errMsg, statusCode: response.status };
   }
 
-  /**
-   * Set DNS nameservers
-   */
+  async getDNSNameservers(): Promise<TailscaleAPIResponse<{ dns: string[] }>> {
+    return this.request<{ dns: string[] }>(
+      "GET",
+      `/tailnet/${this.tailnet}/dns/nameservers`,
+    );
+  }
+
   async setDNSNameservers(
     nameservers: string[],
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/dns/nameservers`,
-        {
-          dns: nameservers,
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "POST",
+      `/tailnet/${this.tailnet}/dns/nameservers`,
+      { dns: nameservers },
+    );
   }
 
-  /**
-   * Get DNS preferences
-   */
   async getDNSPreferences(): Promise<
     TailscaleAPIResponse<{ magicDNS: boolean }>
   > {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/dns/preferences`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<{ magicDNS: boolean }>(
+      "GET",
+      `/tailnet/${this.tailnet}/dns/preferences`,
+    );
   }
 
-  /**
-   * Set DNS preferences
-   */
   async setDNSPreferences(
     magicDNS: boolean,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/dns/preferences`,
-        {
-          magicDNS,
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "POST",
+      `/tailnet/${this.tailnet}/dns/preferences`,
+      { magicDNS },
+    );
   }
 
-  /**
-   * Get DNS search paths
-   */
   async getDNSSearchPaths(): Promise<
     TailscaleAPIResponse<{ searchPaths: string[] }>
   > {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/dns/searchpaths`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<{ searchPaths: string[] }>(
+      "GET",
+      `/tailnet/${this.tailnet}/dns/searchpaths`,
+    );
   }
 
-  /**
-   * Set DNS search paths
-   */
   async setDNSSearchPaths(
     searchPaths: string[],
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/dns/searchpaths`,
-        {
-          searchPaths,
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "POST",
+      `/tailnet/${this.tailnet}/dns/searchpaths`,
+      { searchPaths },
+    );
   }
 
-  /**
-   * List auth keys
-   */
   async listAuthKeys(): Promise<TailscaleAPIResponse<AuthKeyList>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/keys`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<AuthKeyList>("GET", `/tailnet/${this.tailnet}/keys`);
   }
 
-  /**
-   * Create auth key
-   */
   async createAuthKey(
     keyConfig: CreateAuthKeyRequest,
   ): Promise<
     TailscaleAPIResponse<{ key: string; id: string; description?: string }>
   > {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/keys`,
-        keyConfig,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<{ key: string; id: string; description?: string }>(
+      "POST",
+      `/tailnet/${this.tailnet}/keys`,
+      keyConfig,
+    );
   }
 
-  /**
-   * Delete auth key
-   */
   async deleteAuthKey(keyId: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.delete(
-        `/tailnet/${this.tailnet}/keys/${keyId}`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "DELETE",
+      `/tailnet/${this.tailnet}/keys/${keyId}`,
+    );
   }
 
-  /**
-   * Get detailed tailnet information
-   */
   async getDetailedTailnetInfo(): Promise<TailscaleAPIResponse<TailnetInfo>> {
     return this.getTailnetInfo();
   }
 
-  /**
-   * Get file sharing status for tailnet
-   */
   async getFileSharingStatus(): Promise<
     TailscaleAPIResponse<{ fileSharing: boolean }>
   > {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/settings`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<{ fileSharing: boolean }>(
+      "GET",
+      `/tailnet/${this.tailnet}/settings`,
+    );
   }
 
-  /**
-   * Set file sharing status for tailnet
-   */
   async setFileSharingStatus(
     enabled: boolean,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/settings`,
-        {
-          fileSharing: enabled,
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/tailnet/${this.tailnet}/settings`, {
+      fileSharing: enabled,
+    });
   }
 
-  /**
-   * Set device as exit node
-   */
   async setDeviceExitNode(
     deviceId: string,
     routes: string[],
@@ -674,349 +494,226 @@ export class TailscaleAPI {
     return this.enableDeviceRoutes(deviceId, routes);
   }
 
-  /**
-   * Get device routes (including exit node status)
-   */
   async getDeviceRoutes(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<DeviceRoutes>> {
-    try {
-      const response = await this.client.get(`/device/${deviceId}/routes`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<DeviceRoutes>("GET", `/device/${deviceId}/routes`);
   }
 
-  /**
-   * Get network lock status
-   */
   async getNetworkLockStatus(): Promise<
     TailscaleAPIResponse<NetworkLockStatus>
   > {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/network-lock`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<NetworkLockStatus>(
+      "GET",
+      `/tailnet/${this.tailnet}/network-lock`,
+    );
   }
 
-  /**
-   * Enable network lock
-   */
   async enableNetworkLock(): Promise<TailscaleAPIResponse<NetworkLockStatus>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/network-lock`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<NetworkLockStatus>(
+      "POST",
+      `/tailnet/${this.tailnet}/network-lock`,
+    );
   }
 
-  /**
-   * Disable network lock
-   */
   async disableNetworkLock(): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.delete(
-        `/tailnet/${this.tailnet}/network-lock`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "DELETE",
+      `/tailnet/${this.tailnet}/network-lock`,
+    );
   }
 
-  /**
-   * List webhooks
-   */
   async listWebhooks(): Promise<TailscaleAPIResponse<WebhookList>> {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/webhooks`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<WebhookList>(
+      "GET",
+      `/tailnet/${this.tailnet}/webhooks`,
+    );
   }
 
-  /**
-   * Create webhook
-   */
   async createWebhook(config: {
     endpointUrl: string;
     secret?: string;
     events: string[];
     description?: string;
   }): Promise<TailscaleAPIResponse<Webhook>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/webhooks`,
-        config,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<Webhook>(
+      "POST",
+      `/tailnet/${this.tailnet}/webhooks`,
+      config,
+    );
   }
 
-  /**
-   * Delete webhook
-   */
   async deleteWebhook(webhookId: string): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.delete(
-        `/tailnet/${this.tailnet}/webhooks/${webhookId}`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "DELETE",
+      `/tailnet/${this.tailnet}/webhooks/${webhookId}`,
+    );
   }
 
-  /**
-   * Test webhook
-   */
   async testWebhook(
     webhookId: string,
   ): Promise<TailscaleAPIResponse<{ success: boolean; message?: string }>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/webhooks/${webhookId}/test`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<{ success: boolean; message?: string }>(
+      "POST",
+      `/tailnet/${this.tailnet}/webhooks/${webhookId}/test`,
+    );
   }
 
-  /**
-   * Get policy file (ACL in HuJSON format)
-   */
   async getPolicyFile(): Promise<TailscaleAPIResponse<string>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/acl`, {
-        headers: {
-          Accept: "application/hujson",
-        },
-      });
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
+    const url = `/tailnet/${this.tailnet}/acl`;
+    const fullUrl = `${this.baseUrl}/api/v2${url}`;
+
+    let authHeader: string;
+    if (this.authMode === "oauth" && this.oauth) {
+      try {
+        const token = await this.oauth.getAccessToken();
+        authHeader = `Bearer ${token}`;
+      } catch (err) {
+        return { success: false, error: getErrorMessage(err) };
+      }
+    } else if (this.authMode === "api_key" && this.apiKey) {
+      authHeader = `Basic ${btoa(`${this.apiKey}:`)}`;
+    } else {
+      authHeader = "";
     }
+
+    let response: Response;
+    try {
+      response = await fetch(fullUrl, {
+        method: "GET",
+        headers: { Authorization: authHeader, Accept: "application/hujson" },
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) };
+    }
+
+    if (response.ok) {
+      const text = await response.text();
+      return { success: true, data: text, statusCode: response.status };
+    }
+
+    let errMsg = response.statusText;
+    try {
+      const errBody = (await response.json()) as Record<string, unknown>;
+      if (typeof errBody.message === "string") errMsg = errBody.message;
+      else if (typeof errBody.error === "string") errMsg = errBody.error;
+    } catch {
+      /* ignore */
+    }
+
+    return { success: false, error: errMsg, statusCode: response.status };
   }
 
-  /**
-   * Test ACL access
-   */
   async testACLAccess(
     src: string,
     dst: string,
     proto?: string,
   ): Promise<TailscaleAPIResponse<ACLTestResult>> {
-    try {
-      const params = new URLSearchParams({
-        src,
-        dst,
-        ...(proto && { proto }),
-      });
-
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/acl/test?${params}`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    const params = new URLSearchParams({
+      src,
+      dst,
+      ...(proto ? { proto } : {}),
+    });
+    return this.request<ACLTestResult>(
+      "GET",
+      `/tailnet/${this.tailnet}/acl/test?${params.toString()}`,
+    );
   }
 
-  /**
-   * Get device tags
-   */
   async getDeviceTags(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<{ tags: string[] }>> {
-    try {
-      const response = await this.client.get(`/device/${deviceId}`);
-      const device = response.data;
-      return this.handleResponse({
-        ...response,
-        data: { tags: device.tags || [] },
-      });
-    } catch (error) {
-      return this.handleError(error);
-    }
+    const result = await this.request<{ tags?: string[] }>(
+      "GET",
+      `/device/${deviceId}`,
+    );
+    if (!result.success) return reshapeError(result);
+    return {
+      success: true,
+      data: { tags: result.data?.tags ?? [] },
+      statusCode: result.statusCode,
+    };
   }
 
-  /**
-   * Set device tags
-   */
   async setDeviceTags(
     deviceId: string,
     tags: string[],
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(`/device/${deviceId}/tags`, {
-        tags: tags,
-      });
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/device/${deviceId}/tags`, { tags });
   }
 
-  /**
-   * Get SSH settings for tailnet
-   */
   async getSSHSettings(): Promise<TailscaleAPIResponse<SSHSettings>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/ssh`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<SSHSettings>("GET", `/tailnet/${this.tailnet}/ssh`);
   }
 
-  /**
-   * Update SSH settings
-   */
   async updateSSHSettings(
     settings: Partial<SSHSettings>,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/ssh`,
-        settings,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>("POST", `/tailnet/${this.tailnet}/ssh`, settings);
   }
 
-  /**
-   * Get network statistics
-   */
   async getNetworkStats(): Promise<TailscaleAPIResponse<NetworkStats>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/stats`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<NetworkStats>("GET", `/tailnet/${this.tailnet}/stats`);
   }
 
-  /**
-   * Get device statistics
-   */
   async getDeviceStats(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<DeviceStats>> {
-    try {
-      const response = await this.client.get(`/device/${deviceId}/stats`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<DeviceStats>("GET", `/device/${deviceId}/stats`);
   }
 
-  /**
-   * Get user list
-   */
   async getUsers(): Promise<TailscaleAPIResponse<UserList>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/users`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<UserList>("GET", `/tailnet/${this.tailnet}/users`);
   }
 
-  /**
-   * Get specific user
-   */
   async getUser(userId: string): Promise<TailscaleAPIResponse<User>> {
-    try {
-      const response = await this.client.get(
-        `/tailnet/${this.tailnet}/users/${userId}`,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<User>(
+      "GET",
+      `/tailnet/${this.tailnet}/users/${userId}`,
+    );
   }
 
-  /**
-   * Update user role
-   */
   async updateUserRole(
     userId: string,
     role: string,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/users/${userId}`,
-        {
-          role: role,
-        },
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "POST",
+      `/tailnet/${this.tailnet}/users/${userId}`,
+      { role },
+    );
   }
 
-  /**
-   * Get audit logs
-   */
   async getAuditLogs(): Promise<TailscaleAPIResponse<AuditLogList>> {
-    try {
-      const response = await this.client.get(`/tailnet/${this.tailnet}/logs`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<AuditLogList>("GET", `/tailnet/${this.tailnet}/logs`);
   }
 
-  /**
-   * Get device posture information
-   */
   async getDevicePosture(
     deviceId: string,
   ): Promise<TailscaleAPIResponse<DevicePosture>> {
-    try {
-      const response = await this.client.get(`/device/${deviceId}/posture`);
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<DevicePosture>("GET", `/device/${deviceId}/posture`);
   }
 
-  /**
-   * Set device posture policy
-   */
   async setDevicePosturePolicy(
     policy: PosturePolicy,
   ): Promise<TailscaleAPIResponse<void>> {
-    try {
-      const response = await this.client.post(
-        `/tailnet/${this.tailnet}/posture-policy`,
-        policy,
-      );
-      return this.handleResponse(response);
-    } catch (error) {
-      return this.handleError(error);
-    }
+    return this.request<void>(
+      "POST",
+      `/tailnet/${this.tailnet}/posture-policy`,
+      policy,
+    );
   }
 }
 
-// Export factory function for creating API instances
-export function createTailscaleAPI(config: TailscaleConfig = {}): TailscaleAPI {
-  return new TailscaleAPI(config);
+export function createTailscaleAPI(deps: { log: Logger }): TailscaleAPI {
+  const apiKey = process.env.TAILSCALE_API_KEY;
+  const tailnet = process.env.TAILSCALE_TAILNET;
+  const apiBaseUrl = process.env.TAILSCALE_API_BASE_URL;
+  const oauth = TailscaleOAuthManager.fromEnvironment(deps);
+
+  return new TailscaleAPI(
+    { apiKey, tailnet, apiBaseUrl },
+    { log: deps.log, oauth: oauth ?? undefined },
+  );
 }

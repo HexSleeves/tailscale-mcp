@@ -1,54 +1,45 @@
-# .dockerignore
-
-# This file prevents local files from being copied into the Docker image.
-# It helps keep the image small, secure, and improves build speed.
-
-# Ignore dependency directories. These are installed fresh inside the container.
+# Dependencies and build output
 node_modules
-
-# Ignore build output. The Dockerfile generates this inside the container.
 dist
 build
 out
 .next
 
-# Ignore local environment variables. These should be passed in at runtime.
+# Environment files — never bake secrets into the image
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 
-# Ignore logs and temporary files. They are not needed and can bust the cache.
-npm-debug.log*
-yarn-error.log
-yarn-debug.log
-*.log
+# Test artifacts
+coverage
+tests
+junit.xml
 
-# Ignore Git repository files.
+# Documentation (not needed at runtime)
+docs
+*.md
+!README.md
+
+# Version control
 .git
 .gitignore
 .gitattributes
+.github
 
-# Ignore Docker-specific files.
-Dockerfile
-.dockerignore
-
-# Ignore IDE and editor configuration files.
+# Editor and tooling configs
 .vscode
 .idea
 *.sublime-project
 *.sublime-workspace
+.cursor
+.claude
+.remember
 
-# Ignore OS-specific files.
+# OS noise
 .DS_Store
 Thumbs.db
 
-# Ignore test reports and coverage output.
-coverage
-junit.xml
-
-# --- IMPORTANT ---
-# Do NOT ignore files needed for the build process itself.
-# For example, your esbuild.config.js, tsconfig.json, or postcss.config.js
-# must NOT be listed here, as they are required by the `npm run build` step.
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log
+yarn-debug.log

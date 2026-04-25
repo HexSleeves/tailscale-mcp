@@ -1,11 +1,10 @@
 [install]
-exact    = true
-peer     = true
+exact = true
+peer = true
 optional = true
 
 [test]
-coverage         = false
-coverageDir      = "coverage"
+coverage = false
+coverageDir = "coverage"
 coverageReporter = ["text", "lcov"]
-# coverageThreshold = 0.8
-# coverageThreshold = { line = 0.8, function = 0.8, statement = 0.8 }
+preload = ["./tests/setup.ts"]
