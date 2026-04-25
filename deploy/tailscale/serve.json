@@ -1,0 +1,19 @@
+{
+  "TCP": {
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "tailscale-mcp:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:3000"
+        }
+      }
+    }
+  },
+  "AllowFunnel": {
+    "tailscale-mcp:443": false
+  }
+}

@@ -18,6 +18,7 @@ out
 .env.development.local
 .env.test.local
 .env.production.local
+deploy/.env
 
 # Ignore logs and temporary files. They are not needed and can bust the cache.
 npm-debug.log*
@@ -29,6 +30,9 @@ yarn-debug.log
 .git
 .gitignore
 .gitattributes
+.context
+.claude
+.cursor
 
 # Ignore Docker-specific files.
 Dockerfile

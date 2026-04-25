@@ -1,0 +1,56 @@
+name: tailscale-mcp
+
+services:
+  ts-mcp:
+    image: tailscale/tailscale:stable
+    hostname: ${TS_HOSTNAME:-tailscale-mcp}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?TS_AUTHKEY is required}
+      TS_HOSTNAME: ${TS_HOSTNAME:-tailscale-mcp}
+      TS_EXTRA_ARGS: --advertise-tags=tag:mcp-server
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_USERSPACE: "false"
+    volumes:
+      - ts-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "tailscale", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: ghcr.io/hexsleeves/tailscale-mcp-server:1.0.0
+    network_mode: service:ts-mcp
+    depends_on:
+      ts-mcp:
+        condition: service_healthy
+    environment:
+      MCP_TRANSPORT: http
+      MCP_HTTP_BIND_HOST: 127.0.0.1
+      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-3000}
+      MCP_HTTP_BEARER_TOKEN: ${MCP_HTTP_BEARER_TOKEN:?MCP_HTTP_BEARER_TOKEN is required}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-tailscale-mcp,localhost,127.0.0.1}
+      TAILSCALE_TAILNET: ${TAILSCALE_TAILNET:--}
+      TAILSCALE_OAUTH_CLIENT_ID: ${TAILSCALE_OAUTH_CLIENT_ID:-}
+      TAILSCALE_OAUTH_CLIENT_SECRET: ${TAILSCALE_OAUTH_CLIENT_SECRET:-}
+      TAILSCALE_API_KEY: ${TAILSCALE_API_KEY:-}
+      TAILSCALE_ALLOWED_TOOL_RISK: ${TAILSCALE_ALLOWED_TOOL_RISK:-read}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: production
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  ts-state:

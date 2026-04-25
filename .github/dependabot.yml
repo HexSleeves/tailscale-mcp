@@ -1,17 +1,47 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
+    labels: ["dependencies"]
     allow:
       - dependency-type: "all"
-    # Note: Dependabot uses npm ecosystem for bun.lock files as well
+    groups:
+      mcp:
+        patterns:
+          - "@modelcontextprotocol/*"
+      typescript-tooling:
+        patterns:
+          - "typescript"
+          - "@biomejs/*"
+          - "@types/*"
+      runtime:
+        patterns:
+          - "axios"
+          - "dotenv"
+          - "express"
+          - "ipaddr.js"
+          - "zod"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "docker"]
+
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "docker"]

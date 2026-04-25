@@ -16,6 +16,9 @@
   "bin": {
     "tailscale-mcp-server": "./dist/index.js"
   },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "files": [
     "dist/**/*",
     "README.md",
@@ -31,6 +34,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "build": "bun esbuild.config.js build && bun run build:types",
+    "build:binary": "bun build src/index.ts --compile --target=bun --outfile=dist/server",
     "build:types": "tsc --project tsconfig.build.json --emitDeclarationOnly",
     "build:dev": "bun esbuild.config.js dev",
     "build:watch": "bun esbuild.config.js watch",
@@ -70,7 +74,7 @@
     "@types/express": "5.0.6",
     "@types/json-schema": "7.0.15",
     "@types/node": "25.6.0",
-"esbuild": "0.28.0",
+    "esbuild": "0.28.0",
     "rimraf": "6.1.3",
     "semver": "7.7.4",
     "tsx": "4.21.0",

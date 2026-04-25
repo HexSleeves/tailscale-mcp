@@ -1,0 +1,15 @@
+// Minimal Tailscale ACL policy for the private MCP deployment.
+// Edit this before applying it to an existing tailnet policy.
+{
+  "tagOwners": {
+    "tag:mcp-server": ["autogroup:admin"],
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["autogroup:admin"],
+      "dst": ["tag:mcp-server:443"],
+    },
+  ],
+}

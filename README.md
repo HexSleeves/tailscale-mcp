@@ -152,3 +152,6 @@ docker run --rm \
 
 Keep the published port bound to localhost and expose it to other devices with
 Tailscale Serve.
+
+For a sidecar deployment that runs the MCP server behind a private Tailscale
+Serve endpoint, see `deploy/README.md`.
