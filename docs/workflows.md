@@ -5,8 +5,8 @@ This project uses GitHub Actions to validate the Bun workspace, publish npm rele
 ## Overview
 
 - **CI** (`.github/workflows/ci.yml`) runs tests and quality checks for pushes and pull requests targeting `main`.
-- **Release** (`.github/workflows/release.yml`) publishes npm releases from `v*` version tags.
-- **Docker** (`.github/workflows/docker.yml`) builds images for pull requests and publishes images from `main` and `v*` tags.
+- **Release** (`.github/workflows/release.yml`) publishes npm releases from `v*` version tags or a manual dispatch with `release_tag`.
+- **Docker** (`.github/workflows/docker.yml`) builds images for pull requests and publishes images from `main`, `v*` tags, and supported manual dispatches.
 
 ## CI Workflow
 

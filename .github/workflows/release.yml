@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -120,7 +120,13 @@ jobs:
             exit 1
           fi
 
-          bun publish --access public
+          PRERELEASE_TAG=$(node -e "const version = require('./package.json').version; const prerelease = version.split('-')[1]; process.stdout.write(prerelease ? prerelease.split('.')[0] : '');")
+
+          if [ -n "${PRERELEASE_TAG}" ]; then
+            bun publish --tag "${PRERELEASE_TAG}" --access public
+          else
+            bun publish --access public
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
