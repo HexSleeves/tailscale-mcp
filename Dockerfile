@@ -5,7 +5,7 @@ RUN bun install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN bun run qa
+RUN bun run qa && bun run build
 
 FROM oven/bun:1-alpine AS production
 WORKDIR /app

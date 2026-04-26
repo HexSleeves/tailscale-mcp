@@ -4,20 +4,29 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-push:
-    name: Build and Push Docker Image
+  docker:
+    name: Build and Publish Docker Image
     runs-on: ubuntu-latest
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    permissions:
-      contents: read
-      packages: write
+    outputs:
+      pushed: ${{ steps.publish.outputs.pushed }}
+      scan-image: ${{ steps.scan-image.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -25,19 +34,60 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+        run: |
+          if [ -n "${DOCKER_HUB_USERNAME}" ] && [ -n "${DOCKER_HUB_TOKEN}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare image names
+        id: image
+        env:
+          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+        run: |
+          echo "ghcr=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
+            echo "dockerhub=${DOCKER_HUB_USERNAME,,}/tailscale-mcp-server" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide publish mode
+        id: publish
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          elif [ "${GITHUB_REF}" = "refs/heads/main" ] || [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GitHub Container Registry
+        if: steps.publish.outputs.pushed == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
+      - name: Log in to Docker Hub
+        if: steps.publish.outputs.pushed == 'true' && steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract GHCR metadata
+        id: ghcr-meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.ghcr }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -45,32 +95,76 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      - name: Build and push Docker image
+      - name: Extract Docker Hub metadata
+        id: dockerhub-meta
+        if: steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.dockerhub }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Prepare Docker tags
+        id: docker-tags
+        run: |
+          {
+            echo "tags<<EOF"
+            echo "${{ steps.ghcr-meta.outputs.tags }}"
+            if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
+              echo "${{ steps.dockerhub-meta.outputs.tags }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "labels<<EOF"
+            echo "${{ steps.ghcr-meta.outputs.labels }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ steps.publish.outputs.pushed == 'true' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
+          labels: ${{ steps.docker-tags.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Select image for scanning
+        id: scan-image
+        if: steps.publish.outputs.pushed == 'true'
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "image=${{ steps.image.outputs.ghcr }}:${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${{ steps.image.outputs.ghcr }}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
 
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: build-and-push
-    if: github.event_name != 'pull_request'
+    needs: docker
+    if: needs.docker.outputs.pushed == 'true'
     steps:
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: "sarif"
-          output: "trivy-results.sarif"
+          image-ref: ${{ needs.docker.outputs.scan-image }}
+          format: sarif
+          output: trivy-results.sarif
 
-      - name: Upload Trivy scan results to GitHub Security tab
+      - name: Upload Trivy scan results
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: "trivy-results.sarif"
+          sarif_file: trivy-results.sarif
