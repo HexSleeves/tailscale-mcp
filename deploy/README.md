@@ -7,7 +7,8 @@ network namespace, then exposes it privately with Tailscale Serve.
 
 - `docker-compose.yml`: Tailscale sidecar plus MCP app container.
 - `Dockerfile`: optional distroless image that runs a Bun-compiled binary.
-- `tailscale/serve.json`: private Serve config for HTTPS on port `443`.
+- `tailscale/render-serve-config.sh`: renders private Serve config for HTTPS on
+  port `443`.
 - `acl/policy.hujson`: minimal ACL example for `tag:mcp-server`.
 - `.env.example`: required runtime variables.
 
@@ -30,12 +31,15 @@ mutating tools.
 
 ## Serve Hostname
 
-`tailscale/serve.json` uses `tailscale-mcp:443` by default. If your tailnet
-requires the full MagicDNS name or you change `TS_HOSTNAME`, replace both the
-`Web` key and the `AllowFunnel` key with the generated hostname, for example:
+The sidecar renders its Serve config at startup from `TS_HOSTNAME` and
+`MCP_HTTP_PORT`. By default, the Serve host is `${TS_HOSTNAME}:443` and proxies
+to `http://127.0.0.1:${MCP_HTTP_PORT}`.
 
-```json
-"tailscale-mcp.example.ts.net:443"
+If your tailnet requires the full MagicDNS name, set `TS_SERVE_HOST`, for
+example:
+
+```bash
+TS_SERVE_HOST=tailscale-mcp.example.ts.net:443
 ```
 
 You can also generate a known-good config from a running sidecar:
@@ -47,7 +51,8 @@ docker compose -f deploy/docker-compose.yml exec ts-mcp \
   tailscale serve status --json
 ```
 
-Use the exported JSON to replace `deploy/tailscale/serve.json` if needed.
+Compare the exported JSON with the rendered file at `/tmp/serve.json` inside the
+`ts-mcp` container if needed.
 
 ## Run
 

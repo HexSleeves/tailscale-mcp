@@ -9,12 +9,15 @@ services:
       TS_HOSTNAME: ${TS_HOSTNAME:-tailscale-mcp}
       TS_EXTRA_ARGS: --advertise-tags=tag:mcp-server
       TS_STATE_DIR: /var/lib/tailscale
-      TS_SERVE_CONFIG: /config/serve.json
+      TS_SERVE_CONFIG: /tmp/serve.json
+      TS_SERVE_HOST: ${TS_SERVE_HOST:-}
+      MCP_HTTP_PORT: ${MCP_HTTP_PORT:-3000}
       TS_USERSPACE: "false"
     volumes:
       - ts-state:/var/lib/tailscale
       - ./tailscale:/config:ro
       - /dev/net/tun:/dev/net/tun
+    entrypoint: ["/bin/sh", "/config/render-serve-config.sh"]
     cap_add:
       - NET_ADMIN
       - NET_RAW
