@@ -36,25 +36,15 @@ jobs:
 
       - name: Check Docker Hub credentials
         id: dockerhub
-        env:
-          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-          DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-        run: |
-          if [ -n "${DOCKER_HUB_USERNAME}" ] && [ -n "${DOCKER_HUB_TOKEN}" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "enabled=${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
 
       - name: Prepare image names
         id: image
-        env:
-          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
         run: |
           echo "ghcr=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
           if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
-            echo "dockerhub=${DOCKER_HUB_USERNAME,,}/tailscale-mcp-server" >> "$GITHUB_OUTPUT"
+            echo "dockerhub=$(echo '${{ secrets.DOCKER_HUB_USERNAME }}/tailscale-mcp-server' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Decide publish mode
@@ -158,7 +148,7 @@ jobs:
     if: needs.docker.outputs.pushed == 'true'
     steps:
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ needs.docker.outputs.scan-image }}
           format: sarif

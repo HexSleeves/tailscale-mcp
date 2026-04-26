@@ -1,301 +1,102 @@
 # CI/CD Workflows Documentation
 
-This directory contains GitHub Actions workflows that automate testing, building, and deployment processes for the Tailscale MCP Server.
+This project uses GitHub Actions to validate the Bun workspace, publish npm releases, and build Docker images for the Tailscale MCP Server.
 
 ## Overview
 
-The project uses a comprehensive CI/CD pipeline with three main workflows:
-
-- **[CI Workflow](#ci-workflow)** (`ci.yml`) - Continuous integration with testing and quality checks
-- **[Docker Workflow](#docker-workflow)** (`docker.yml`) - Container image building and publishing
-- **[Release Workflow](#release-workflow)** (`release.yml`) - Automated releases and version management
+- **CI** (`.github/workflows/ci.yml`) runs tests and quality checks for pushes and pull requests targeting `main`.
+- **Release** (`.github/workflows/release.yml`) publishes npm releases from `v*` version tags.
+- **Docker** (`.github/workflows/docker.yml`) builds images for pull requests and publishes images from `main` and `v*` tags.
 
 ## CI Workflow
 
-**File**: `ci.yml`
-**Triggers**: Push to `main`/`develop`, Pull requests to `main`/`develop`
+**Workflow name**: `CI`
+**Job id**: `ci`
+**Job name**: `Test, Build, Typecheck, Lint, Audit`
+**Runner**: `ubuntu-latest`
+**Triggers**: push to `main`, pull request to `main`, manual dispatch
 
-### Jobs Overview
+The CI workflow is a single sequential Bun job. It no longer runs a Node.js version matrix and does not upload coverage to Codecov.
 
-#### 1. Lint and Type Check
+### Steps
 
-- **Purpose**: Code quality validation
-- **Node.js**: 20
-- **Steps**:
-  - TypeScript type checking (`npm run typecheck`)
-  - Code linting (when configured)
-
-#### 2. Unit Tests
-
-- **Purpose**: Fast, isolated component testing
-- **Node.js Matrix**: 18, 20, 22
-- **Features**:
-  - Cross-platform compatibility testing
-  - Coverage reporting to Codecov
-  - No external dependencies required
-
-#### 3. Integration Tests
-
-- **Purpose**: End-to-end testing with Tailscale CLI
-- **Node.js**: 20
-- **Requirements**:
-  - Tailscale CLI installation
-  - Optional: Tailscale authentication for full testing
-- **Features**:
-  - CLI security validation
-  - Real Tailscale integration (when authenticated)
-  - Graceful degradation without auth
-  - Automatic cleanup
-
-#### 4. Build Verification
-
-- **Purpose**: Ensure project builds correctly
-- **Artifacts**: Uploads build output for verification
-- **Validation**: Checks for required output files
-
-#### 5. Security Audit
-
-- **Purpose**: Dependency vulnerability scanning
-- **Tools**:
-  - `npm audit` (moderate level)
-  - `audit-ci` for CI-specific checks
-
-### Environment Variables
-
-| Variable              | Purpose                  | Required |
-| --------------------- | ------------------------ | -------- |
-| `TAILSCALE_AUTH_KEY`  | Full integration testing | Optional |
-| `TAILSCALE_TEST_MODE` | CI test mode flag        | Auto-set |
-
-### Coverage Reporting
-
-- **Unit Tests**: Uploaded to Codecov with `unittests` flag
-- **Integration Tests**: Uploaded to Codecov with `integration` flag
-- **Threshold**: Configurable per test type
-
-## Docker Workflow
-
-**File**: `docker.yml`
-**Triggers**: Push to `main`, version tags (`v*`), manual dispatch
-
-### Features
-
-#### Multi-Platform Builds
-
-- **Platforms**: `linux/amd64`, `linux/arm64`
-- **Registry**: GitHub Container Registry (GHCR)
-- **Caching**: GitHub Actions cache for faster builds
-
-#### Image Tagging Strategy
-
-- **Branch**: `main` → `latest`
-- **Tags**: `v1.2.3` → `1.2.3`, `1.2`, `1`
-- **SHA**: Commit-specific tags for traceability
-- **PR**: Preview tags for pull requests
-
-#### Security Scanning
-
-- **Tool**: Trivy vulnerability scanner
-- **Integration**: Results uploaded to GitHub Security tab
-- **Format**: SARIF for GitHub integration
-
-### Registry Configuration
-
-```bash
-# Define registry and image name
-REGISTRY=ghcr.io/hexsleeves
-IMAGE_NAME=tailscale-mcp-server
-
-# Login to GitHub Container Registry
-docker login $REGISTRY -u USERNAME -p GITHUB_TOKEN
-
-# Pull images
-docker pull ${{ REGISTRY }}/${{ IMAGE_NAME }}:latest
-```
+1. Checkout the repository.
+2. Set up Bun `1.3.13`.
+3. Set up Node.js `20`.
+4. Restore Bun dependency cache.
+5. Install dependencies with `bun install --frozen-lockfile`.
+6. Run `bun run lint`.
+7. Run `bun run typecheck`.
+8. Install the pinned Tailscale CLI package from the signed Tailscale apt repository and verify it with `tailscale version`.
+9. Run `bun run test`.
+10. Run `bun run build` and verify `dist/index.js`.
+11. Build the compiled binary and smoke check it.
+12. Run `bun audit --audit-level=moderate`.
 
 ## Release Workflow
 
-**File**: `release.yml`
-**Triggers**: Push to `main`, manual dispatch with release type
+**Workflow name**: `Release`
+**Runner**: `ubuntu-latest`
+**Triggers**: push of `v*` tags, manual dispatch with a `release_tag` input
 
-### Automated Version Bumping
+The release workflow is tag-driven. It does not bump `package.json`, generate commits, or create tags. The pushed or manually supplied tag must match the package version, for example tag `v1.2.3` requires `"version": "1.2.3"` in `package.json`.
 
-#### Commit-Based Detection
+### Steps
 
-- **Major**: `BREAKING CHANGE` or `!:` in commit message
-- **Minor**: `feat:` prefix in commit message
-- **Patch**: All other commits
+1. Checkout the version tag.
+2. Set up Bun `1.3.13` and Node.js `20` with npm registry auth configuration.
+3. Install dependencies with `bun install --frozen-lockfile`.
+4. Validate that the release tag matches `package.json`.
+5. Run lint, typecheck, tests, build, binary smoke check, and `bun audit --audit-level=moderate`.
+6. Publish to npm with `bun publish --access public` using `NODE_AUTH_TOKEN`.
+7. Create a GitHub Release for the tag with generated release notes.
 
-#### Manual Override
+### Required Secret
 
-- **Workflow Dispatch**: Choose `patch`, `minor`, `major`, or `prerelease`
-- **Interactive**: Use local publish script for full control
+| Secret      | Purpose                  |
+| ----------- | ------------------------ |
+| `NPM_TOKEN` | Publish the package to npm |
 
-### Release Process
+## Docker Workflow
 
-1. **Quality Gates**
+**Workflow name**: `Docker`
+**Runner**: `ubuntu-latest`
+**Triggers**: push to `main`, push of `v*` tags, pull request to `main`, manual dispatch
 
-   - Full test suite execution
-   - Build verification
-   - Artifact validation
+Pull requests build images without pushing them. Pushes to `main` and `v*` tags build and publish images. Publish runs are not cancelled in progress so multi-platform pushes are not interrupted mid-release.
 
-2. **Version Management**
+### Registry Targets
 
-   - Automatic `package.json` version bump
-   - Git tag creation (`v1.2.3`)
-   - Changelog generation from commits
+- GitHub Container Registry: `ghcr.io/${{ github.repository }}`
+- Docker Hub: `${DOCKER_HUB_USERNAME}/tailscale-mcp-server`, only when both Docker Hub secrets are configured
 
-3. **Artifact Publishing**
-   - Build artifacts uploaded
-   - NPM package publishing (when configured)
-   - Docker images via Docker workflow
+### Tagging
 
-### Release Types
+- Pull requests: PR metadata tags, build only
+- `main`: branch and SHA tags
+- `v1.2.3`: `1.2.3`, `1.2`, `1`, SHA tag, and `latest`
 
-| Type         | Description                       | Example                   |
-| ------------ | --------------------------------- | ------------------------- |
-| `patch`      | Bug fixes, minor updates          | `1.0.0` → `1.0.1`         |
-| `minor`      | New features, backward compatible | `1.0.0` → `1.1.0`         |
-| `major`      | Breaking changes                  | `1.0.0` → `2.0.0`         |
-| `prerelease` | Alpha/beta versions               | `1.0.0` → `1.0.1-alpha.0` |
+### Security Scanning
 
-## Workflow Dependencies
+After a pushed image is available, the workflow scans the GHCR image with Trivy and uploads SARIF results to GitHub Security. PR builds do not run the registry scan because no image is pushed.
 
-```mermaid
-graph TD
-    A[Push/PR] --> B[Lint & Type Check]
-    A --> C[Unit Tests]
-    C --> D[Integration Tests]
-    B --> E[Build]
-    D --> E
-    E --> F[Security Audit]
+### Optional Docker Hub Secrets
 
-    G[Push to main] --> H[Docker Build]
-    G --> I[Release Process]
-    I --> J[Version Bump]
-    J --> K[Publish Artifacts]
-```
+| Secret                | Purpose                    |
+| --------------------- | -------------------------- |
+| `DOCKER_HUB_USERNAME` | Docker Hub repository owner |
+| `DOCKER_HUB_TOKEN`    | Docker Hub publish token    |
 
-## Configuration Files
+## Local Verification
 
-### Jest Configurations
-
-- `jest.config.ts` - Base configuration
-- `jest.config.unit.ts` - Unit test specific
-- `jest.config.integration.ts` - Integration test specific
-
-### TypeScript
-
-- `tsconfig.json` - TypeScript compiler configuration
-- Type checking in CI ensures code quality
-
-### ESLint
-
-- `eslint.config.js` - Code linting rules
-- Integrated into CI pipeline
-
-## Secrets and Variables
-
-### Repository Secrets
-
-| Secret               | Purpose               | Required     |
-| -------------------- | --------------------- | ------------ |
-| `TAILSCALE_AUTH_KEY` | Integration testing   | Optional     |
-| `NPM_TOKEN`          | NPM publishing        | For releases |
-| `DOCKER_HUB_TOKEN`   | Docker Hub publishing | For releases |
-
-### Environment Variables
-
-| Variable       | Purpose                 | Default                    |
-| -------------- | ----------------------- | -------------------------- |
-| `NODE_VERSION` | Primary Node.js version | `"20"`                     |
-| `REGISTRY`     | Container registry      | `ghcr.io`                  |
-| `IMAGE_NAME`   | Container image name    | `${{ github.repository }}` |
-
-## Troubleshooting
-
-### Common Issues
-
-#### Integration Tests Failing
+Use these commands before changing workflows:
 
 ```bash
-# Check Tailscale CLI installation
-tailscale version
-
-# Verify authentication (if using auth key)
-tailscale status
+bun install --frozen-lockfile
+bun run lint
+bun run typecheck
+bun run test
+bun run build
+bun audit --audit-level=moderate
+docker build .
 ```
-
-#### Docker Build Issues
-
-```bash
-# Check multi-platform support
-docker buildx ls
-
-# Verify registry authentication
-docker login ghcr.io
-```
-
-#### Release Process Issues
-
-```bash
-# Check version format
-npm version --help
-
-# Verify Git configuration
-git config user.name
-git config user.email
-```
-
-### Debug Mode
-
-Enable debug logging in workflows:
-
-```yaml
-- name: Debug Step
-  run: echo "Debug information"
-  env:
-    ACTIONS_STEP_DEBUG: true
-```
-
-## Best Practices
-
-### Workflow Maintenance
-
-1. **Regular Updates**: Keep action versions current
-2. **Security**: Use pinned action versions for security
-3. **Caching**: Leverage GitHub Actions cache for dependencies
-4. **Secrets**: Rotate secrets regularly
-
-### Testing Strategy
-
-1. **Fast Feedback**: Unit tests run on multiple Node.js versions
-2. **Real Integration**: Integration tests with actual Tailscale CLI
-3. **Security First**: Regular dependency audits
-4. **Coverage**: Maintain high test coverage
-
-### Release Management
-
-1. **Semantic Versioning**: Follow semver principles
-2. **Changelog**: Auto-generate from commit messages
-3. **Rollback**: Tag-based rollback capability
-4. **Verification**: Always verify builds before release
-
-## Contributing to Workflows
-
-### Adding New Workflows
-
-1. Create workflow file in `.github/workflows/`
-2. Follow existing naming conventions
-3. Add appropriate triggers and permissions
-4. Include error handling and cleanup
-5. Update this documentation
-
-### Modifying Existing Workflows
-
-1. Test changes in feature branches
-2. Consider backward compatibility
-3. Update documentation
-4. Verify all dependent workflows
-
-For more information about GitHub Actions, see the [official documentation](https://docs.github.com/en/actions).

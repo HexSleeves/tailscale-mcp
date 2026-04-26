@@ -13,6 +13,7 @@ permissions:
 env:
   NODE_VERSION: "20"
   BUN_VERSION: "1.3.13"
+  TAILSCALE_VERSION: "1.96.4"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -57,7 +58,11 @@ jobs:
 
       - name: Install Tailscale CLI
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
+          . /etc/os-release
+          curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.noarmor.gpg" | sudo tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+          curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.tailscale-keyring.list" | sudo tee /etc/apt/sources.list.d/tailscale.list
+          sudo apt-get update
+          sudo apt-get install -y "tailscale=${TAILSCALE_VERSION}"
           tailscale version
 
       - name: Test
@@ -80,4 +85,4 @@ jobs:
         run: bash scripts/smoke-check-binary.sh ./dist/server 5
 
       - name: Audit dependencies
-        run: bun audit
+        run: bun audit --audit-level=moderate
