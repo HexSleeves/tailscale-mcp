@@ -31,8 +31,8 @@ mutating tools.
 ## Serve Hostname
 
 `tailscale/serve.json` uses `tailscale-mcp:443` by default. If your tailnet
-requires the full MagicDNS name, replace that key with the generated hostname,
-for example:
+requires the full MagicDNS name or you change `TS_HOSTNAME`, replace both the
+`Web` key and the `AllowFunnel` key with the generated hostname, for example:
 
 ```json
 "tailscale-mcp.example.ts.net:443"

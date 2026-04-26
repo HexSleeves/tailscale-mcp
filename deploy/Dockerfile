@@ -1,4 +1,4 @@
-FROM oven/bun:1.3-alpine AS builder
+FROM oven/bun:1.3 AS builder
 
 WORKDIR /app
 
@@ -15,4 +15,4 @@ COPY --from=builder /app/dist/server /server
 EXPOSE 3000
 USER nonroot
 
-ENTRYPOINT ["/server", "--http", "--host", "127.0.0.1", "--port", "3000"]
+ENTRYPOINT ["/server", "--http"]

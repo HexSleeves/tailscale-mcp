@@ -87,10 +87,16 @@ jobs:
           LOG_LEVEL: error
         run: |
           set -euo pipefail
+          set +e
           OUT=$(printf '%s\n%s\n' \
             '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
             '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-            | timeout 5 ./dist/server || true)
+            | timeout 5 ./dist/server)
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 124 ]; then
+            exit "$STATUS"
+          fi
           echo "$OUT"
           echo "$OUT" | grep -q '"protocolVersion":"2025-06-18"'
 
