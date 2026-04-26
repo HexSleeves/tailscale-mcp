@@ -165,6 +165,8 @@ describe("TailscaleCLI Security Tests (integration)", () => {
           /not connected/i,
           /authentication required/i,
           /operation not permitted/i,
+          /checkprefs access denied/i,
+          /use 'sudo tailscale up/i,
           /changing settings via 'tailscale up' requires mentioning all/i,
           /advertised without its IPv6 counterpart/i,
           /advertised without its IPv4 counterpart/i,
