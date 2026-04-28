@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/hexsleeves-tailscale-mcp-badge.png)](https://mseep.ai/app/hexsleeves-tailscale-mcp)
+
 # Tailscale MCP Server
 
 A Bun-first Model Context Protocol server for operating Tailscale through a
