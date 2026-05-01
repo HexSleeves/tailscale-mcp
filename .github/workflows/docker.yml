@@ -75,7 +75,7 @@ jobs:
 
       - name: Extract GHCR metadata
         id: ghcr-meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.ghcr }}
           tags: |
@@ -90,7 +90,7 @@ jobs:
       - name: Extract Docker Hub metadata
         id: dockerhub-meta
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.dockerhub }}
           tags: |
