@@ -12,10 +12,16 @@ export class AppError extends Error {
 }
 
 export function toMcpError(error: unknown): CallToolResult {
+  // NOTE: tools advertise an `outputSchema`. MCP clients validate a result's
+  // `structuredContent` against that schema even on error results. An error
+  // shape (`{ error: ... }`) does not conform to schemas like
+  // `{ data }`/`{ message }`, so attaching it made every failed call surface
+  // the opaque "structured content does not match the output schema" and
+  // hid the real error. Error results intentionally omit `structuredContent`;
+  // the actionable message stays in the text content.
   if (error instanceof AppError) {
     return {
       isError: true,
-      structuredContent: { error: { code: error.code } },
       content: [{ type: "text", text: error.safeMessage }],
     };
   }
@@ -23,14 +29,12 @@ export function toMcpError(error: unknown): CallToolResult {
   if (error instanceof Error) {
     return {
       isError: true,
-      structuredContent: { error: { code: "operation_failed" } },
       content: [{ type: "text", text: error.message }],
     };
   }
 
   return {
     isError: true,
-    structuredContent: { error: { code: "internal_error" } },
     content: [{ type: "text", text: "Operation failed" }],
   };
 }
