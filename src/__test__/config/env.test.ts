@@ -29,4 +29,27 @@ describe("loadConfig", () => {
       }),
     ).toThrow("HTTP transport requires MCP_HTTP_BEARER_TOKEN");
   });
+
+  test("rejects non-loopback http API base URL", () => {
+    expect(() =>
+      loadConfig({
+        TAILSCALE_API_KEY: "tskey-test",
+        TAILSCALE_API_BASE_URL: "http://api.tailscale.com",
+      }),
+    ).toThrow("TAILSCALE_API_BASE_URL must use https");
+  });
+
+  test("allows loopback http API base URL incl. bracketed IPv6", () => {
+    for (const url of [
+      "http://localhost:8080",
+      "http://127.0.0.1:8080",
+      "http://[::1]:8080",
+    ]) {
+      const config = loadConfig({
+        TAILSCALE_API_KEY: "tskey-test",
+        TAILSCALE_API_BASE_URL: url,
+      });
+      expect(config.TAILSCALE_API_BASE_URL).toBe(url);
+    }
+  });
 });

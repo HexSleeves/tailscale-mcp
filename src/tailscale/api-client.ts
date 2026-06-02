@@ -143,9 +143,12 @@ export class TailscaleApiClient {
   }
 
   async deleteAuthKey(keyId: string): Promise<ApiResult<unknown>> {
-    return this.request(`/tailnet/${this.tailnet}/keys/${keyId}`, {
-      method: "DELETE",
-    });
+    return this.request(
+      `/tailnet/${this.tailnet}/keys/${encodeURIComponent(keyId)}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   async getTailnetSettings(): Promise<ApiResult<unknown>> {
@@ -171,15 +174,21 @@ export class TailscaleApiClient {
   }
 
   async deleteWebhook(webhookId: string): Promise<ApiResult<unknown>> {
-    return this.request(`/tailnet/${this.tailnet}/webhooks/${webhookId}`, {
-      method: "DELETE",
-    });
+    return this.request(
+      `/tailnet/${this.tailnet}/webhooks/${encodeURIComponent(webhookId)}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   async testWebhook(webhookId: string): Promise<ApiResult<unknown>> {
-    return this.request(`/tailnet/${this.tailnet}/webhooks/${webhookId}/test`, {
-      method: "POST",
-    });
+    return this.request(
+      `/tailnet/${this.tailnet}/webhooks/${encodeURIComponent(webhookId)}/test`,
+      {
+        method: "POST",
+      },
+    );
   }
 
   async setDeviceTags(

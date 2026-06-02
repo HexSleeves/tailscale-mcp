@@ -1,3 +1,4 @@
+import net from "node:net";
 import { z } from "zod";
 
 export const ToolRiskSchema = z.enum(["read", "write", "admin"]);
@@ -14,6 +15,30 @@ const EnvSchema = z
     TAILSCALE_API_BASE_URL: z
       .string()
       .url()
+      .refine(
+        (value) => {
+          const url = new URL(value);
+          if (url.protocol === "https:") {
+            return true;
+          }
+          if (url.protocol !== "http:") {
+            return false;
+          }
+          // WHATWG URL keeps brackets around IPv6 hosts (e.g. "[::1]").
+          const host = url.hostname.replace(/^\[|\]$/g, "");
+          // Permit plain HTTP only for loopback (local dev / mock servers);
+          // anything else would transmit the API key / OAuth secret in cleartext.
+          return (
+            host === "localhost" ||
+            (net.isIPv4(host) && host === "127.0.0.1") ||
+            (net.isIPv6(host) && host === "::1")
+          );
+        },
+        {
+          message:
+            "TAILSCALE_API_BASE_URL must use https (http allowed only for localhost)",
+        },
+      )
       .default("https://api.tailscale.com"),
     TAILSCALE_API_KEY: z.string().optional(),
     TAILSCALE_OAUTH_CLIENT_ID: z.string().optional(),

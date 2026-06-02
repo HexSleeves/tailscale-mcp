@@ -11,6 +11,14 @@ export function createRateLimitMiddleware(limit = 120, windowMs = 60_000) {
   return (req: Request, res: Response, next: NextFunction) => {
     const key = req.ip ?? req.socket.remoteAddress ?? "unknown";
     const now = Date.now();
+    if (buckets.size > 0) {
+      for (const [bucketKey, bucketValue] of buckets) {
+        if (bucketValue.resetAt <= now) {
+          buckets.delete(bucketKey);
+        }
+      }
+    }
+
     const bucket = buckets.get(key);
 
     if (!bucket || bucket.resetAt <= now) {
