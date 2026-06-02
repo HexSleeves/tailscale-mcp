@@ -14,21 +14,29 @@ env:
   NODE_VERSION: "20"
   BUN_VERSION: "1.3.13"
   TAILSCALE_VERSION: "1.96.4"
+  GHCR_REGISTRY: ghcr.io
+  DOCKERHUB_IMAGE: hexsleeves/tailscale-mcp-server
 
 permissions:
   contents: write
+  packages: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  npm-release:
-    name: Publish to npm
+  # ─── Validate, test, build ─────────────────────────────────────────────────
+  validate:
+    name: Validate & Build
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pkg.outputs.version }}
+      tag: ${{ steps.tag.outputs.value }}
+      prerelease_tag: ${{ steps.prerelease.outputs.tag }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
@@ -39,13 +47,13 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
 
       - name: Cache Bun dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.bun/install/cache
@@ -57,22 +65,43 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Validate release tag
+      - name: Read package version
+        id: pkg
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release tag
+        id: tag
         env:
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          EXPECTED_TAG="v${PACKAGE_VERSION}"
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "value=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
 
-          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] && [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "Release workflow must run from a version tag, expected ${EXPECTED_TAG}."
+      - name: Validate tag format and matches package.json
+        env:
+          PKG_VERSION: ${{ steps.pkg.outputs.version }}
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          if ! echo "${RELEASE_TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "Tag '${RELEASE_TAG}' does not match expected format vX.Y.Z"
+            exit 1
+          fi
+          EXPECTED="v${PKG_VERSION}"
+          if [ "${RELEASE_TAG}" != "${EXPECTED}" ]; then
+            echo "Tag ${RELEASE_TAG} does not match package.json version ${PKG_VERSION} (expected ${EXPECTED})."
             exit 1
           fi
 
-          if [ "${RELEASE_TAG}" != "${EXPECTED_TAG}" ]; then
-            echo "Tag ${RELEASE_TAG} does not match package.json version ${PACKAGE_VERSION}."
-            exit 1
-          fi
+      - name: Detect pre-release channel
+        id: prerelease
+        run: |
+          TAG=$(node -e "const v = require('./package.json').version; const pre = v.split('-')[1]; process.stdout.write(pre ? pre.split('.')[0] : '');")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Lint
         run: bun run lint
@@ -111,30 +140,150 @@ jobs:
       - name: Audit dependencies
         run: bun audit --audit-level=moderate
 
+  # ─── npm ───────────────────────────────────────────────────────────────────
+  npm-publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-release-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+          PRERELEASE_TAG: ${{ needs.validate.outputs.prerelease_tag }}
         run: |
           if [ -z "${NPM_CONFIG_TOKEN}" ]; then
-            echo "NPM_TOKEN is required to publish."
+            echo "NPM_TOKEN secret is not set."
             exit 1
           fi
-
-          PRERELEASE_TAG=$(node -e "const version = require('./package.json').version; const prerelease = version.split('-')[1]; process.stdout.write(prerelease ? prerelease.split('.')[0] : '');")
-
           if [ -n "${PRERELEASE_TAG}" ]; then
             bun publish --tag "${PRERELEASE_TAG}" --access public
           else
             bun publish --access public
           fi
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+  # ─── Docker ────────────────────────────────────────────────────────────────
+  docker-publish:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-          name: Release ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_TOKEN != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Extract GHCR metadata
+        id: ghcr-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.GHCR_REGISTRY }}/${{ github.repository_owner }}/tailscale-mcp-server
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.validate.outputs.prerelease_tag == '' }}
+
+      - name: Extract Docker Hub metadata
+        id: dockerhub-meta
+        if: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_TOKEN != '' }}
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.validate.outputs.prerelease_tag == '' }}
+
+      - name: Merge tags from all registries
+        id: tags
+        env:
+          GHCR_TAGS: ${{ steps.ghcr-meta.outputs.tags }}
+          DOCKERHUB_TAGS: ${{ steps.dockerhub-meta.outputs.tags }}
+        run: |
+          {
+            echo "value<<EOF"
+            echo "${GHCR_TAGS}"
+            echo "${DOCKERHUB_TAGS}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.value }}
+          labels: ${{ steps.ghcr-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── GitHub Release ────────────────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate, npm-publish, docker-publish]
+    steps:
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: Release ${{ needs.validate.outputs.tag }}
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'alpha') || contains(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'beta') || contains(github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name, 'rc') }}
+          prerelease: ${{ needs.validate.outputs.prerelease_tag != '' }}
