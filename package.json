@@ -14,7 +14,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "tailscale-mcp-server": "./dist/index.js"
+    "tailscale-mcp-server": "dist/index.js"
   },
   "engines": {
     "bun": ">=1.3.0"
