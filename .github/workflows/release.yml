@@ -181,18 +181,24 @@ jobs:
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_REGISTRY: https://registry.npmjs.org
           PRERELEASE_TAG: ${{ needs.validate.outputs.prerelease_tag }}
+          PKG_VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          if [ -z "${NPM_CONFIG_TOKEN}" ]; then
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
             echo "NPM_TOKEN secret is not set."
             exit 1
           fi
+
+          # Skip if this version is already published (idempotent re-runs)
+          if npm view "@hexsleeves/tailscale-mcp-server@${PKG_VERSION}" version 2>/dev/null | grep -q "${PKG_VERSION}"; then
+            echo "Version ${PKG_VERSION} already published — skipping."
+            exit 0
+          fi
+
           if [ -n "${PRERELEASE_TAG}" ]; then
-            bun publish --tag "${PRERELEASE_TAG}" --access public
+            npm publish --tag "${PRERELEASE_TAG}" --access public
           else
-            bun publish --access public
+            npm publish --access public
           fi
 
   # ─── Docker ────────────────────────────────────────────────────────────────
