@@ -41,7 +41,7 @@ const esmConfig = {
   outfile: "dist/index.js",
   // Banner to add shebang for executable
   banner: {
-    js: "#!/usr/bin/env bun\n// Tailscale MCP Server - Built with esbuild",
+    js: "#!/usr/bin/env node\n// Tailscale MCP Server - Built with esbuild",
   },
 };
 

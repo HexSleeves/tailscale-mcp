@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import type { AppLogger } from "../observability/logger.js";
 import { redact } from "../observability/redaction.js";
 import {
@@ -121,29 +122,52 @@ export class TailscaleCliClient {
       redact([this.cliPath, ...args]),
     );
 
-    const proc = Bun.spawn([this.cliPath, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
+    const { stdout, stderr, exitCode } = await new Promise<{
+      stdout: string;
+      stderr: string;
+      exitCode: number;
+    }>((resolve, reject) => {
+      const proc = spawn(this.cliPath, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: false,
+      });
+
+      let out = "";
+      let err = "";
+      proc.stdout.on("data", (chunk: Buffer) => {
+        out += chunk.toString("utf8");
+      });
+      proc.stderr.on("data", (chunk: Buffer) => {
+        err += chunk.toString("utf8");
+      });
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        resolve({ stdout: out, stderr: err, exitCode: code ?? -1 });
+      });
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        stdout: "",
+        stderr: `Failed to execute ${this.cliPath}: ${message}`,
+        exitCode: -1,
+      };
     });
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
+    // CLI stderr may echo arguments (e.g. auth keys); redact before exposing
+    const safeStderr = redact(stderr.trim());
 
     if (exitCode !== 0) {
       return {
         success: false,
-        error: stderr.trim() || `tailscale exited with code ${exitCode}`,
-        stderr: stderr.trim(),
+        error: safeStderr || `tailscale exited with code ${exitCode}`,
+        stderr: safeStderr,
       };
     }
 
     return {
       success: true,
       data: stdout.trim(),
-      stderr: stderr.trim() || undefined,
+      stderr: safeStderr || undefined,
     };
   }
 }

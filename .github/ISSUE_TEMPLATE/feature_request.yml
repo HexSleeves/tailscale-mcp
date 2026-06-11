@@ -1,0 +1,55 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Before submitting, check existing issues and discussions to avoid duplicates.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: A clear description of the problem or gap this feature would address.
+      placeholder: "I often need to ... but currently there is no way to ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe what you would like to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you have considered or tried.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature category
+      options:
+        - New tool
+        - Enhancement to existing tool
+        - New resource
+        - New prompt
+        - Transport / HTTP mode
+        - Authentication
+        - Configuration / env vars
+        - Docker / deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or references that would help.

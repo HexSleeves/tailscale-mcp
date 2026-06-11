@@ -9,13 +9,14 @@ export function createRateLimitMiddleware(limit = 120, windowMs = 60_000) {
   const buckets = new Map<string, Bucket>();
 
   return (req: Request, res: Response, next: NextFunction) => {
+    // Express "trust proxy" is left disabled, so req.ip reflects the socket
+    // address, not a spoofable X-Forwarded-For header. Requests with no
+    // resolvable address share one bucket rather than bypassing the limit.
     const key = req.ip ?? req.socket.remoteAddress ?? "unknown";
     const now = Date.now();
-    if (buckets.size > 0) {
-      for (const [bucketKey, bucketValue] of buckets) {
-        if (bucketValue.resetAt <= now) {
-          buckets.delete(bucketKey);
-        }
+    for (const [bucketKey, bucketValue] of buckets) {
+      if (bucketValue.resetAt <= now) {
+        buckets.delete(bucketKey);
       }
     }
 

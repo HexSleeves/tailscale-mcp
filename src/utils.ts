@@ -1,7 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { isAxiosError } from "axios";
 import ipaddr from "ipaddr.js";
-import { logger } from "./logger.js";
 import { CLIError, TailscaleError } from "./types.js";
 
 // Validation Constants
@@ -72,21 +71,6 @@ export const DANGEROUS_CHARS = [
   '"',
 ];
 
-export const DANGEROUS_CHARS_BASIC = [
-  ";",
-  "&",
-  "|",
-  "`",
-  "$",
-  "(",
-  ")",
-  "{",
-  "}",
-  "<",
-  ">",
-  "\\",
-];
-
 // Validation Functions
 export function validateTarget(target: string): void {
   if (!target || typeof target !== "string") {
@@ -141,7 +125,7 @@ export function validateStringInput(input: string, fieldName: string): void {
   }
 
   // Check for dangerous characters
-  for (const char of DANGEROUS_CHARS_BASIC) {
+  for (const char of DANGEROUS_CHARS) {
     if (input.includes(char)) {
       throw new Error(`Invalid character '${char}' in ${fieldName}`);
     }
@@ -190,7 +174,6 @@ export function getErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  logger.error("Unknown error:", error);
   return String(error);
 }
 
