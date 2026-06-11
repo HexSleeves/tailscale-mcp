@@ -1,0 +1,100 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.json",
+  "name": "io.github.hexsleeves/tailscale-mcp-server",
+  "description": "MCP server for operating Tailscale from any MCP client. Provides tools for device management, network operations, ACL/DNS/key administration, and exit node control. Supports stdio and HTTP transports with risk-gated access levels.",
+  "repository": {
+    "url": "https://github.com/HexSleeves/tailscale-mcp",
+    "type": "git"
+  },
+  "version_detail": {
+    "version": "1.2.0"
+  },
+  "packages": [
+    {
+      "registry_name": "npm",
+      "name": "@hexsleeves/tailscale-mcp-server",
+      "version": "1.2.0",
+      "runtime_arguments": [],
+      "environment_variables": [
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_ID",
+          "description": "Tailscale OAuth client ID (preferred authentication method). Must be provided together with TAILSCALE_OAUTH_CLIENT_SECRET.",
+          "required": false
+        },
+        {
+          "name": "TAILSCALE_OAUTH_CLIENT_SECRET",
+          "description": "Tailscale OAuth client secret. Required when TAILSCALE_OAUTH_CLIENT_ID is set.",
+          "required": false
+        },
+        {
+          "name": "TAILSCALE_API_KEY",
+          "description": "Tailscale legacy API key (fallback when OAuth credentials are not provided). Obtain from https://login.tailscale.com/admin/settings/keys.",
+          "required": false
+        },
+        {
+          "name": "TAILSCALE_TAILNET",
+          "description": "Tailnet name or '-' to use the default tailnet for the authenticated user.",
+          "required": false,
+          "default": "-"
+        },
+        {
+          "name": "TAILSCALE_ALLOWED_TOOL_RISK",
+          "description": "Maximum risk level for tool execution. 'read' (default) allows only non-mutating operations. 'write' enables ACL, DNS, route, and tag mutations. 'admin' additionally enables destructive operations such as device deletion, connect/disconnect, and auth key management.",
+          "required": false,
+          "default": "read"
+        },
+        {
+          "name": "TAILSCALE_CLI_PATH",
+          "description": "Path to the local Tailscale CLI binary. Required for CLI-backed tools (get_network_status, connect_network, disconnect_network, ping_peer, get_version).",
+          "required": false,
+          "default": "tailscale"
+        },
+        {
+          "name": "TAILSCALE_API_BASE_URL",
+          "description": "Tailscale REST API base URL. Override only for testing against a mock server; must use https except for localhost.",
+          "required": false,
+          "default": "https://api.tailscale.com"
+        },
+        {
+          "name": "MCP_TRANSPORT",
+          "description": "Transport mode. 'stdio' (default) for local MCP clients. 'http' for network deployments; requires MCP_HTTP_BEARER_TOKEN.",
+          "required": false,
+          "default": "stdio"
+        },
+        {
+          "name": "MCP_HTTP_BEARER_TOKEN",
+          "description": "Bearer token for HTTP transport authentication. Must be at least 32 characters. Required when MCP_TRANSPORT=http.",
+          "required": false
+        },
+        {
+          "name": "MCP_HTTP_BIND_HOST",
+          "description": "Host to bind the HTTP server to. Defaults to 127.0.0.1 (loopback only).",
+          "required": false,
+          "default": "127.0.0.1"
+        },
+        {
+          "name": "MCP_HTTP_PORT",
+          "description": "Port for the HTTP server.",
+          "required": false,
+          "default": "3000"
+        },
+        {
+          "name": "MCP_ALLOWED_HOSTS",
+          "description": "Comma-separated list of additional Host header values allowed in HTTP mode.",
+          "required": false
+        },
+        {
+          "name": "LOG_LEVEL",
+          "description": "Log verbosity level.",
+          "required": false,
+          "default": "info"
+        },
+        {
+          "name": "MCP_SERVER_LOG_FILE",
+          "description": "Optional file path for log output. When unset, logs go to stderr.",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

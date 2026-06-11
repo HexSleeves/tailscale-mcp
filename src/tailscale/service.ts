@@ -166,7 +166,13 @@ export class TailscaleService {
   async getTailnetSummary(): Promise<TailnetSummary> {
     const [tailnet, devices] = await Promise.all([
       this.api.getTailnetInfo(),
-      this.listDevices().catch(() => []),
+      this.listDevices().catch((error) => {
+        this.logger.warn(
+          "Tailnet summary: device listing failed; returning summary without devices",
+          error instanceof Error ? error.message : error,
+        );
+        return [] as DeviceSummary[];
+      }),
     ]);
     const record =
       tailnet.success && tailnet.data && typeof tailnet.data === "object"

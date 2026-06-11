@@ -2,6 +2,68 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Node.js runtime compatibility: added `node` shebang to the compiled entry point and switched subprocess spawning from `Bun.spawn` to `node:child_process`. The package now runs with plain Node.js 20+ via `npx -y @hexsleeves/tailscale-mcp-server`.
+- `engines` field in `package.json` declares `node >=20`.
+
+### Changed
+
+- Removed dead logger module that was no longer reachable after the 1.0.0 server rebuild.
+- Tailnet summary errors now log a structured message instead of swallowing the failure silently.
+
+### Security
+
+- Tailscale CLI stderr output is now redacted before being forwarded to logs, preventing accidental exposure of auth keys in diagnostic output.
+- Input validation tightened across tool handlers to reject empty strings and out-of-range values earlier.
+
+---
+
+## [1.2.0] - 2026-05-10
+
+### Fixed
+
+- Fixed MCP tool errors being masked by non-conforming `structuredContent` shapes; errors now surface correctly to the client.
+- Fixed IPv6 loopback check for HTTP base URL validation so `[::1]` is accepted as a safe local address.
+- Fixed API path parameters being passed unencoded; all device IDs and tailnet names are now percent-encoded.
+- Fixed `MCP_HTTP_BEARER_TOKEN` validation to require 32+ character minimum, enforced at startup.
+- Fixed npm publish step in CI (`npm publish` replacing broken `bun publish` invocation).
+
+### Changed
+
+- Removed unused legacy server stack that remained from the pre-1.0.0 codebase.
+- Removed unused `@modelcontextprotocol/sdk/zod` dependency.
+- OAuth token cache is now evicted on API 401 responses to force re-authentication.
+- Consolidated release workflow: single job publishes to npm and Docker in sequence with injection-safe secret handling.
+
+### Maintenance
+
+- Configured Renovate for automated dependency updates.
+- Bumped all GitHub Actions to latest major versions (checkout v6, setup-node v6, upload-artifact v7, docker/* v4-v7, codeql v4).
+
+---
+
+## [1.1.0] - 2026-04-30
+
+### Added
+
+- Enhanced route handling: `manage_routes` tool now validates CIDR notation and returns structured route state after mutations.
+- Added `AGENTS.md` with contributor guidance for AI-assisted development workflows.
+- Added Glama MCP registry build configuration.
+
+### Changed
+
+- Updated CI cache action to v5.
+- Cleaned up project documentation and resolved audit warnings from transitive dependencies.
+
+### Fixed
+
+- Fixed Docker build failures related to the security audit step in CI.
+
+---
+
 ## [1.0.0] - 2026-04-25
 
 ### Added
