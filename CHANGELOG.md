@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.2] - 2026-07-03
+
+### Security
+
+- Pinned `form-data` to 4.0.6 through dependency overrides to clear the transitive axios audit advisory.
+
 ## [1.3.1] - 2026-07-03
 
 ### Maintenance
