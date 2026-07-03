@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "axios": "1.18.0",
+    "axios": "1.18.1",
     "dotenv": "17.4.2",
     "express": "5.2.1",
     "ipaddr.js": "2.4.0",
