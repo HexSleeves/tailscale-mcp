@@ -2,15 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [1.3.0] - 2026-06-10
 
 ### Added
 
 - Node.js runtime compatibility: added `node` shebang to the compiled entry point and switched subprocess spawning from `Bun.spawn` to `node:child_process`. The package now runs with plain Node.js 20+ via `npx -y @hexsleeves/tailscale-mcp-server`.
 - `engines` field in `package.json` declares `node >=20`.
+- 81 unit tests covering all 15 MCP tools, risk-level gating, and resource handlers.
+- `CONTRIBUTING.md`, GitHub issue templates, and an MCP registry `server.json` manifest.
 
 ### Changed
 
+- README consolidated: quick-start configs for Claude Desktop, Claude Code, and Cursor; full tool reference table; environment variable table.
 - Removed dead logger module that was no longer reachable after the 1.0.0 server rebuild.
 - Tailnet summary errors now log a structured message instead of swallowing the failure silently.
 
@@ -18,6 +21,7 @@ All notable changes to this project are documented in this file.
 
 - Tailscale CLI stderr output is now redacted before being forwarded to logs, preventing accidental exposure of auth keys in diagnostic output.
 - Input validation tightened across tool handlers to reject empty strings and out-of-range values earlier.
+- Bumped `hono` override to 4.12.21, clearing four moderate audit advisories in the transitive dependency chain.
 
 ---
 
