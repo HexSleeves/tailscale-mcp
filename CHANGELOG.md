@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.1] - 2026-07-03
+
+### Maintenance
+
+- Added pnpm workspace and lockfile metadata for package-manager compatibility.
+- Updated dependency overrides for `brace-expansion`, `fast-uri`, `hono`, and `qs`.
+- Updated runtime and development dependencies including `axios`, `@biomejs/biome`, `@types/node`, and `esbuild`.
+- Updated GitHub Actions dependencies for `actions/checkout` and `actions/cache`.
+
 ## [1.3.0] - 2026-06-10
 
 ### Added
