@@ -35,11 +35,28 @@ describe("list_devices handler", () => {
   test("route fields are optional in the output JSON Schema", () => {
     const schema = z.toJSONSchema(DevicesOutputSchema) as unknown as {
       properties: {
-        devices: { items: { required?: string[] } };
+        devices: {
+          items: {
+            properties: Record<
+              string,
+              { type?: string; items?: { type?: string } }
+            >;
+            required?: string[];
+          };
+        };
       };
     };
-    const required = schema.properties.devices.items.required ?? [];
+    const itemSchema = schema.properties.devices.items;
+    const required = itemSchema.required ?? [];
 
+    expect(itemSchema.properties.advertisedRoutes).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(itemSchema.properties.enabledRoutes).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
     expect(required).not.toContain("advertisedRoutes");
     expect(required).not.toContain("enabledRoutes");
   });
