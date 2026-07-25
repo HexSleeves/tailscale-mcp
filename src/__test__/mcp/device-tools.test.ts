@@ -8,6 +8,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
+import { DevicesOutputSchema } from "../../mcp/schemas/tool-results.js";
 import { registerDeviceTools } from "../../mcp/tools/devices.js";
 import {
   CapturingServer,
@@ -30,6 +32,35 @@ function buildServer(risk: "read" | "write" | "admin" = "admin") {
 }
 
 describe("list_devices handler", () => {
+  test("route fields are optional in the output JSON Schema", () => {
+    const schema = z.toJSONSchema(DevicesOutputSchema) as unknown as {
+      properties: {
+        devices: {
+          items: {
+            properties: Record<
+              string,
+              { type?: string; items?: { type?: string } }
+            >;
+            required?: string[];
+          };
+        };
+      };
+    };
+    const itemSchema = schema.properties.devices.items;
+    const required = itemSchema.required ?? [];
+
+    expect(itemSchema.properties.advertisedRoutes).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(itemSchema.properties.enabledRoutes).toMatchObject({
+      type: "array",
+      items: { type: "string" },
+    });
+    expect(required).not.toContain("advertisedRoutes");
+    expect(required).not.toContain("enabledRoutes");
+  });
+
   test("success path — returns device list content", async () => {
     const { server, svc } = buildServer("read");
     svc.listDevices = async () => [sampleDevice];
