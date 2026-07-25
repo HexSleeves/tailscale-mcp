@@ -47,10 +47,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
-          registry-url: https://registry.npmjs.org
 
       - name: Cache Bun dependencies
         uses: actions/cache@v6
@@ -146,8 +145,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     permissions:
-      contents: read
-      id-token: write
+      contents: read # Required by actions/checkout.
+      id-token: write # Required by npm trusted publishing with provenance.
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -160,7 +159,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24"
 
