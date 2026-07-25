@@ -21,7 +21,7 @@ The CI workflow is a single sequential Bun job. It no longer runs a Node.js vers
 ### Steps
 
 1. Checkout the repository.
-2. Set up Bun `1.3.13`.
+2. Set up Bun `1.3.14`.
 3. Set up Node.js `20`.
 4. Restore Bun dependency cache.
 5. Install dependencies with `bun install --frozen-lockfile`.
@@ -44,18 +44,18 @@ The release workflow is tag-driven. It does not bump `package.json`, generate co
 ### Steps
 
 1. Checkout the version tag.
-2. Set up Bun `1.3.13` and Node.js `20` with npm registry auth configuration.
+2. Set up Bun `1.3.14` and Node.js `24`.
 3. Install dependencies with `bun install --frozen-lockfile`.
 4. Validate that the release tag matches `package.json`.
 5. Run lint, typecheck, tests, build, binary smoke check, and `bun audit --audit-level=moderate`.
-6. Publish to npm with `bun publish --access public` using `NODE_AUTH_TOKEN`.
+6. Publish to npm with provenance using npm trusted publishing.
 7. Create a GitHub Release for the tag with generated release notes.
 
-### Required Secret
+### npm Trusted Publisher
 
-| Secret      | Purpose                  |
-| ----------- | ------------------------ |
-| `NPM_TOKEN` | Publish the package to npm |
+Configure the npm package to trust the `release.yml` workflow in the
+`HexSleeves/tailscale-mcp` repository. Releases use GitHub Actions OIDC instead
+of a long-lived npm token.
 
 ## Docker Workflow
 

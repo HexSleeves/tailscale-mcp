@@ -1,30 +1,5 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels: ["dependencies"]
-    allow:
-      - dependency-type: "all"
-    groups:
-      mcp:
-        patterns:
-          - "@modelcontextprotocol/*"
-      typescript-tooling:
-        patterns:
-          - "typescript"
-          - "@biomejs/*"
-          - "@types/*"
-      runtime:
-        patterns:
-          - "axios"
-          - "dotenv"
-          - "express"
-          - "ipaddr.js"
-          - "zod"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
