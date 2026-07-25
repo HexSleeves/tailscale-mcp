@@ -4,9 +4,9 @@
 
 **Goal:** Replace Dependabot PRs #139, #141, and #142 with one verified dependency-update PR.
 
-**Architecture:** Apply the exact requested versions to the manifest and workflows, regenerate both authoritative lockfiles, and validate the combined dependency graph through every release gate. Keep the update in one signed implementation commit after the committed design.
+**Architecture:** Apply the exact requested versions to the manifest and workflows, regenerate the authoritative Bun lockfile, and validate the combined dependency graph through every release gate. Keep the update in one signed implementation commit after the committed design.
 
-**Tech Stack:** Bun 1.3.x, pnpm lockfile v9, TypeScript 7, Biome 2.5, GitHub Actions, Docker
+**Tech Stack:** Bun 1.3.x, TypeScript 7, Biome 2.5, GitHub Actions, Docker
 
 ---
 
@@ -49,6 +49,7 @@ Expected: no migration beyond the version and lockfile updates is required; Type
 
 **Files:**
 - Modify: `package.json:71`
+- Modify: `biome.json:2`
 - Modify: `.github/workflows/ci.yml:35`
 - Modify: `.github/workflows/release.yml:49`
 - Modify: `.github/workflows/release.yml:159`
@@ -64,7 +65,11 @@ Set:
 "typescript": "7.0.2"
 ```
 
-- [ ] **Step 2: Update setup-node**
+- [ ] **Step 2: Align the Biome schema**
+
+Set the `$schema` URL in `biome.json` to the 2.5.3 schema.
+
+- [ ] **Step 3: Update setup-node**
 
 Replace all three occurrences with:
 
@@ -72,21 +77,20 @@ Replace all three occurrences with:
 uses: actions/setup-node@v7
 ```
 
-- [ ] **Step 3: Verify exact manifest and workflow versions**
+- [ ] **Step 4: Verify exact manifest and workflow versions**
 
 Run:
 
 ```bash
-rg -n '"(@biomejs/biome|@types/node|tsx|typescript)"|actions/setup-node@' package.json .github/workflows
+rg -n '"(@biomejs/biome|@types/node|tsx|typescript)"|actions/setup-node@|schemas/2\\.5\\.3/' package.json biome.json .github/workflows
 ```
 
 Expected: only the approved versions appear.
 
-### Task 3: Regenerate both lockfiles
+### Task 3: Regenerate the Bun lockfile
 
 **Files:**
 - Modify: `bun.lock`
-- Modify: `pnpm-lock.yaml`
 
 - [ ] **Step 1: Regenerate the Bun lockfile**
 
@@ -98,33 +102,21 @@ bun install
 
 Expected: `bun.lock` records all four updated development dependencies.
 
-- [ ] **Step 2: Regenerate the pnpm lockfile**
-
-Run:
-
-```bash
-pnpm install --lockfile-only
-```
-
-Expected: `pnpm-lock.yaml` records the same four direct versions without unrelated manifest changes.
-
-- [ ] **Step 3: Verify immutable installs**
+- [ ] **Step 2: Verify the immutable install**
 
 Run:
 
 ```bash
 bun install --frozen-lockfile
-pnpm install --lockfile-only --frozen-lockfile
 ```
 
-Expected: both commands exit 0 without lockfile changes.
+Expected: the command exits 0 without lockfile changes.
 
 ### Task 4: Validate the combined update
 
 **Files:**
 - Verify: `package.json`
 - Verify: `bun.lock`
-- Verify: `pnpm-lock.yaml`
 - Verify: `.github/workflows/ci.yml`
 - Verify: `.github/workflows/release.yml`
 
@@ -209,14 +201,14 @@ git diff --stat origin/main...HEAD
 git diff origin/main...HEAD
 ```
 
-Expected: only the design, plan, dependency manifests, lockfiles, and setup-node workflow references changed.
+Expected: only the design, plan, dependency manifest, Biome schema, Bun lockfile, and setup-node workflow references changed.
 
 - [ ] **Step 2: Commit the implementation**
 
 Run:
 
 ```bash
-git add package.json bun.lock pnpm-lock.yaml .github/workflows/ci.yml .github/workflows/release.yml
+git add package.json biome.json bun.lock .github/workflows/ci.yml .github/workflows/release.yml
 git commit -S -m "chore(deps): consolidate Dependabot updates"
 ```
 
