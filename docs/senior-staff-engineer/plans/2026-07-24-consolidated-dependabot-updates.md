@@ -35,11 +35,13 @@ Review:
 
 ```text
 https://github.com/biomejs/biome/releases/tag/%40biomejs%2Fbiome%402.5.3
-https://github.com/DefinitelyTyped/DefinitelyTyped/commits/master/types/node
-https://github.com/microsoft/TypeScript/releases/tag/v7.0.2
+https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/
+https://github.com/microsoft/typescript-go/releases/tag/typescript/v7.0.2
 https://github.com/privatenumber/tsx/releases/tag/v4.23.1
 https://github.com/actions/setup-node/releases/tag/v7.0.0
 ```
+
+Run `npm diff --diff=@types/node@26.1.0 --diff=@types/node@26.1.1` for the published Node type-definition patch.
 
 Expected: no migration beyond the version and lockfile updates is required; TypeScript 7 compatibility remains subject to the repository typecheck and declaration build.
 
