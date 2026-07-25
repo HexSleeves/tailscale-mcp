@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.3] - 2026-07-24
+
+### Fixed
+
+- Allowed omitted routes in device output.
+- Aligned Bun dependency updates across CI and Docker builds.
+- Replaced npm token publishing with OIDC trusted publishing.
+
 ## [1.3.2] - 2026-07-03
 
 ### Security
