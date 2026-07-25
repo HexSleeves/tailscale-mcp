@@ -1,6 +1,6 @@
 {
   "name": "@hexsleeves/tailscale-mcp-server",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "A Model Context Protocol (MCP) server that provides seamless integration with Tailscale's CLI commands and REST API, enabling automated network management and monitoring through a standardized interface.",
   "keywords": [
     "tailscale",
@@ -11,6 +11,10 @@
   ],
   "author": "HexSleeves",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HexSleeves/tailscale-mcp.git"
+  },
   "type": "module",
   "packageManager": "bun@1.3.14",
   "main": "dist/index.js",

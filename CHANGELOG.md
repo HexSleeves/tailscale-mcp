@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.4] - 2026-07-24
+
+### Fixed
+
+- Added package repository metadata required for npm provenance verification.
+
 ## [1.3.3] - 2026-07-24
 
 ### Fixed
