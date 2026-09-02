@@ -86,7 +86,7 @@
   "overrides": {
     "@hono/node-server": "2.0.12",
     "ajv": "8.20.0",
-    "fast-uri": "4.1.1",
+    "fast-uri": "4.1.4",
     "hono": "4.12.31",
     "ip-address": "10.3.1",
     "path-to-regexp": "8.4.2",
