@@ -157,6 +157,70 @@ describe("toJsonSchema2020_12", () => {
     expect(singleFirst).toEqual({ items: { type: "string" } });
   });
 
+  test("drops $ref siblings that draft-07 ignores", () => {
+    // draft-07 §8.3: every sibling of `$ref` MUST be ignored. In 2020-12 they
+    // apply, so carrying `not: {}` across would flip this schema from
+    // accepting every instance to rejecting every instance.
+    const result = toJsonSchema2020_12({
+      $schema: DRAFT_07,
+      definitions: { Any: true },
+      $ref: "#/definitions/Any",
+      not: {},
+      type: "string",
+    }) as Record<string, unknown>;
+
+    expect(result.$ref).toBe("#/$defs/Any");
+    expect(result.not).toBeUndefined();
+    expect(result.type).toBeUndefined();
+    // Kept so the reference still resolves.
+    expect(result.$defs).toEqual({ Any: true });
+    expect(result.$schema).toBe(JSON_SCHEMA_2020_12);
+  });
+
+  test("keeps annotations alongside a draft-07 $ref", () => {
+    const result = toJsonSchema2020_12({
+      $schema: DRAFT_07,
+      $ref: "#/definitions/Device",
+      title: "Device",
+      description: "a device",
+      deprecated: true,
+      minLength: 3,
+    }) as Record<string, unknown>;
+
+    expect(result.title).toBe("Device");
+    expect(result.description).toBe("a device");
+    expect(result.deprecated).toBe(true);
+    // An assertion, so draft-07 ignored it.
+    expect(result.minLength).toBeUndefined();
+  });
+
+  test("leaves $ref siblings intact when the root is not draft-07", () => {
+    // A schema that never declared draft-07 may well intend its `$ref`
+    // siblings to validate; dropping them would silently weaken it.
+    const undeclared = toJsonSchema2020_12({
+      $ref: "#/$defs/Any",
+      not: {},
+    }) as Record<string, unknown>;
+    const current = toJsonSchema2020_12({
+      $schema: JSON_SCHEMA_2020_12,
+      $ref: "#/$defs/Any",
+      not: {},
+    }) as Record<string, unknown>;
+
+    expect(undeclared.not).toEqual({});
+    expect(current.not).toEqual({});
+  });
+
+  test("a $ref with no assertion siblings is untouched", () => {
+    const result = toJsonSchema2020_12({
+      $schema: DRAFT_07,
+      properties: { child: { allOf: [{ $ref: "#" }] } },
+    }) as Record<string, Record<string, unknown>>;
+
+    // This is the shape Zod actually emits for recursive schemas.
+    expect(result.properties.child).toEqual({ allOf: [{ $ref: "#" }] });
+  });
+
   test("an explicit dependentRequired sibling wins regardless of key order", () => {
     const dependenciesFirst = toJsonSchema2020_12({
       dependencies: { creditCard: ["billingAddress"] },

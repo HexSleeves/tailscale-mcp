@@ -47,8 +47,33 @@ const DRAFT_07_SCHEMA_IDS = new Set([
 const DEFINITIONS_REF_PREFIX = "#/definitions/";
 const DEFS_REF_PREFIX = "#/$defs/";
 
+/**
+ * Keywords that annotate or identify rather than assert. draft-07 ignores every
+ * sibling of `$ref`, but carrying these across costs nothing semantically and
+ * keeps the documentation a generator attached to a reference.
+ */
+const ANNOTATION_KEYWORDS = new Set([
+  "$anchor",
+  "$comment",
+  "$defs",
+  "$id",
+  "$schema",
+  "default",
+  "definitions",
+  "deprecated",
+  "description",
+  "examples",
+  "readOnly",
+  "title",
+  "writeOnly",
+]);
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDraft07Id(value: unknown): boolean {
+  return typeof value === "string" && DRAFT_07_SCHEMA_IDS.has(value);
 }
 
 /**
@@ -58,6 +83,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function convertDependencies(
   dependencies: Record<string, unknown>,
   target: Record<string, unknown>,
+  fromDraft07: boolean,
 ): void {
   const dependentRequired: Record<string, unknown> = {};
   const dependentSchemas: Record<string, unknown> = {};
@@ -66,7 +92,7 @@ function convertDependencies(
     if (Array.isArray(value)) {
       dependentRequired[key] = value;
     } else {
-      dependentSchemas[key] = toJsonSchema2020_12(value);
+      dependentSchemas[key] = convert(value, fromDraft07);
     }
   }
 
@@ -91,18 +117,36 @@ function convertDependencies(
 }
 
 /**
- * Recursively rewrites a JSON Schema value from draft-07 to JSON Schema
- * 2020-12. Returns a new value; the input is never mutated. Values that are not
- * schema objects (or that already declare 2020-12) pass through unchanged apart
- * from the recursion.
+ * Whether this object is a draft-07 `$ref` carrying siblings that draft-07
+ * ignores.
+ *
+ * draft-07 §8.3: "All other properties in a `$ref` object MUST be ignored." In
+ * 2020-12 `$ref` became an ordinary applicator whose siblings DO apply, so
+ * copying them across changes meaning — `{$ref: "#/definitions/Any", not: {}}`
+ * flips from accepting every instance to rejecting every instance.
  */
-export function toJsonSchema2020_12(schema: unknown): unknown {
+function hasIgnoredRefSiblings(schema: Record<string, unknown>): boolean {
+  return (
+    typeof schema.$ref === "string" &&
+    Object.keys(schema).some(
+      (key) => key !== "$ref" && !ANNOTATION_KEYWORDS.has(key),
+    )
+  );
+}
+
+function convert(schema: unknown, fromDraft07: boolean): unknown {
   if (Array.isArray(schema)) {
-    return schema.map(toJsonSchema2020_12);
+    return schema.map((entry) => convert(entry, fromDraft07));
   }
   if (!isPlainObject(schema)) {
     return schema;
   }
+
+  // The faithful 2020-12 form of a draft-07 `$ref` object is the reference
+  // alone: ignored assertions are dropped, while `$defs`/`definitions` stay so
+  // the reference still resolves. No `allOf` wrapper is needed — a lone `$ref`
+  // already means "must match the referenced schema".
+  const dropRefSiblings = fromDraft07 && hasIgnoredRefSiblings(schema);
 
   const result: Record<string, unknown> = {};
   // These are folded in after the loop so the outcome never depends on JSON
@@ -114,12 +158,13 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
   let dependencies: Record<string, unknown> | undefined;
 
   for (const [key, value] of Object.entries(schema)) {
+    if (dropRefSiblings && key !== "$ref" && !ANNOTATION_KEYWORDS.has(key)) {
+      continue;
+    }
+
     switch (key) {
       case "$schema":
-        result.$schema =
-          typeof value === "string" && DRAFT_07_SCHEMA_IDS.has(value)
-            ? JSON_SCHEMA_2020_12
-            : value;
+        result.$schema = isDraft07Id(value) ? JSON_SCHEMA_2020_12 : value;
         break;
 
       case "$ref":
@@ -132,7 +177,7 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
 
       // draft-07 `definitions` is 2020-12 `$defs`.
       case "definitions": {
-        const converted = toJsonSchema2020_12(value);
+        const converted = convert(value, fromDraft07);
         renamedDefs = isPlainObject(converted) ? converted : undefined;
         break;
       }
@@ -141,9 +186,11 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
       case "items":
         if (Array.isArray(value)) {
           itemsWasTuple = true;
-          result.prefixItems = value.map(toJsonSchema2020_12);
+          result.prefixItems = value.map((entry) =>
+            convert(entry, fromDraft07),
+          );
         } else {
-          result.items = toJsonSchema2020_12(value);
+          result.items = convert(value, fromDraft07);
         }
         break;
 
@@ -155,12 +202,12 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
         if (isPlainObject(value)) {
           dependencies = value;
         } else {
-          result.dependencies = toJsonSchema2020_12(value);
+          result.dependencies = convert(value, fromDraft07);
         }
         break;
 
       default:
-        result[key] = toJsonSchema2020_12(value);
+        result[key] = convert(value, fromDraft07);
         break;
     }
   }
@@ -177,14 +224,30 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
   // unconditionally would turn `{items: {type: "string"}, additionalItems: false}`
   // into `items: false` and reject every element.
   if (itemsWasTuple && additionalItems) {
-    result.items = toJsonSchema2020_12(additionalItems.value);
+    result.items = convert(additionalItems.value, fromDraft07);
   }
 
   if (dependencies) {
-    convertDependencies(dependencies, result);
+    convertDependencies(dependencies, result, fromDraft07);
   }
 
   // A schema with no dialect is assumed 2020-12 by MCP clients, so only an
   // explicit draft-07 marker needed rewriting; nothing is added here.
   return result;
+}
+
+/**
+ * Recursively rewrites a JSON Schema value from draft-07 to JSON Schema
+ * 2020-12. Returns a new value; the input is never mutated. Values that are not
+ * schema objects pass through unchanged apart from the recursion.
+ *
+ * A rewrite that would change the meaning of a schema NOT written against
+ * draft-07 — currently the `$ref` sibling rule — applies only when the root
+ * declares the draft-07 dialect. The rest (`definitions`, tuple `items`,
+ * `additionalItems`, `dependencies`) name keywords that 2020-12 either renamed
+ * or never had, so converting them is safe either way.
+ */
+export function toJsonSchema2020_12(schema: unknown): unknown {
+  const fromDraft07 = isPlainObject(schema) && isDraft07Id(schema.$schema);
+  return convert(schema, fromDraft07);
 }
