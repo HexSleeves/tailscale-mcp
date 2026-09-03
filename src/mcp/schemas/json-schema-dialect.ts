@@ -70,20 +70,22 @@ function convertDependencies(
     }
   }
 
+  // An explicit 2020-12 sibling wins over the converted draft-07 key, matching
+  // how `definitions` yields to `$defs`.
   if (Object.keys(dependentRequired).length > 0) {
     target.dependentRequired = {
+      ...dependentRequired,
       ...(isPlainObject(target.dependentRequired)
         ? target.dependentRequired
         : {}),
-      ...dependentRequired,
     };
   }
   if (Object.keys(dependentSchemas).length > 0) {
     target.dependentSchemas = {
+      ...dependentSchemas,
       ...(isPlainObject(target.dependentSchemas)
         ? target.dependentSchemas
         : {}),
-      ...dependentSchemas,
     };
   }
 }
@@ -103,9 +105,13 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
   }
 
   const result: Record<string, unknown> = {};
-  // `definitions` is folded in after the loop so that an explicit `$defs`
-  // sibling wins regardless of key order.
+  // These are folded in after the loop so the outcome never depends on JSON
+  // member order: an explicit 2020-12 sibling wins, and `additionalItems` can
+  // be judged against the final `items` form rather than whichever came first.
   let renamedDefs: Record<string, unknown> | undefined;
+  let itemsWasTuple = false;
+  let additionalItems: { value: unknown } | undefined;
+  let dependencies: Record<string, unknown> | undefined;
 
   for (const [key, value] of Object.entries(schema)) {
     switch (key) {
@@ -134,21 +140,20 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
       // Tuple form `items: [A, B]` is 2020-12 `prefixItems`.
       case "items":
         if (Array.isArray(value)) {
+          itemsWasTuple = true;
           result.prefixItems = value.map(toJsonSchema2020_12);
         } else {
           result.items = toJsonSchema2020_12(value);
         }
         break;
 
-      // With a tuple, draft-07 `additionalItems` constrains the tail — which is
-      // what 2020-12 `items` means alongside `prefixItems`.
       case "additionalItems":
-        result.items = toJsonSchema2020_12(value);
+        additionalItems = { value };
         break;
 
       case "dependencies":
         if (isPlainObject(value)) {
-          convertDependencies(value, result);
+          dependencies = value;
         } else {
           result.dependencies = toJsonSchema2020_12(value);
         }
@@ -165,6 +170,18 @@ export function toJsonSchema2020_12(schema: unknown): unknown {
       ...renamedDefs,
       ...(isPlainObject(result.$defs) ? result.$defs : {}),
     };
+  }
+
+  // draft-07 `additionalItems` applies ONLY when `items` is a tuple; with a
+  // single-schema `items` (or none at all) it is ignored. Translating it
+  // unconditionally would turn `{items: {type: "string"}, additionalItems: false}`
+  // into `items: false` and reject every element.
+  if (itemsWasTuple && additionalItems) {
+    result.items = toJsonSchema2020_12(additionalItems.value);
+  }
+
+  if (dependencies) {
+    convertDependencies(dependencies, result);
   }
 
   // A schema with no dialect is assumed 2020-12 by MCP clients, so only an

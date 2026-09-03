@@ -106,6 +106,73 @@ describe("toJsonSchema2020_12", () => {
     expect(result.prefixItems).toBeUndefined();
   });
 
+  test("ignores additionalItems when items is a single schema", () => {
+    // draft-07 applies `additionalItems` only to tuple `items`. Translating it
+    // here would emit `items: false` and reject every element.
+    const result = toJsonSchema2020_12({
+      type: "array",
+      items: { type: "string" },
+      additionalItems: false,
+    }) as Record<string, unknown>;
+
+    expect(result.items).toEqual({ type: "string" });
+    expect(result.additionalItems).toBeUndefined();
+    expect(result.prefixItems).toBeUndefined();
+  });
+
+  test("ignores additionalItems when items is absent", () => {
+    const result = toJsonSchema2020_12({
+      type: "array",
+      additionalItems: { type: "number" },
+    }) as Record<string, unknown>;
+
+    expect(result.items).toBeUndefined();
+    expect(result.additionalItems).toBeUndefined();
+  });
+
+  test("additionalItems translation is independent of key order", () => {
+    const tupleFirst = toJsonSchema2020_12({
+      items: [{ type: "string" }],
+      additionalItems: false,
+    }) as Record<string, unknown>;
+    const additionalFirst = toJsonSchema2020_12({
+      additionalItems: false,
+      items: [{ type: "string" }],
+    }) as Record<string, unknown>;
+
+    expect(tupleFirst).toEqual(additionalFirst);
+    expect(tupleFirst.items).toBe(false);
+    expect(tupleFirst.prefixItems).toEqual([{ type: "string" }]);
+
+    const singleFirst = toJsonSchema2020_12({
+      items: { type: "string" },
+      additionalItems: false,
+    });
+    const singleLast = toJsonSchema2020_12({
+      additionalItems: false,
+      items: { type: "string" },
+    });
+
+    expect(singleFirst).toEqual(singleLast);
+    expect(singleFirst).toEqual({ items: { type: "string" } });
+  });
+
+  test("an explicit dependentRequired sibling wins regardless of key order", () => {
+    const dependenciesFirst = toJsonSchema2020_12({
+      dependencies: { creditCard: ["billingAddress"] },
+      dependentRequired: { creditCard: ["taxId"] },
+    }) as Record<string, unknown>;
+    const siblingFirst = toJsonSchema2020_12({
+      dependentRequired: { creditCard: ["taxId"] },
+      dependencies: { creditCard: ["billingAddress"] },
+    }) as Record<string, unknown>;
+
+    expect(dependenciesFirst).toEqual(siblingFirst);
+    expect(dependenciesFirst.dependentRequired).toEqual({
+      creditCard: ["taxId"],
+    });
+  });
+
   test("splits dependencies into dependentRequired and dependentSchemas", () => {
     const result = toJsonSchema2020_12({
       dependencies: {
