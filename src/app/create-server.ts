@@ -47,6 +47,8 @@ export async function createMcpServer({
   // 2020-12-only validator reject every tool. Normalize the dialect on the way
   // out. Wrapped here, at the single place the server is built, so that every
   // transport inherits it instead of each having to remember.
+  // TODO(sdk#2084): drop this wrapper once the SDK emits 2020-12 — see
+  // ../mcp/schemas/json-schema-dialect.ts for the upstream issues and PRs.
   const connect = server.connect.bind(server);
   server.connect = (transport: Transport): Promise<void> =>
     connect(withNormalizedToolSchemas(transport));

@@ -19,6 +19,17 @@
  * relabel: the draft-07-only constructs are converted to their 2020-12
  * equivalents as well, so the shim stays correct if the emitted schema shapes
  * ever grow beyond the plain `type`/`properties`/`required` forms in use today.
+ *
+ * TODO(sdk#2084): delete this module, `../transports/schema-dialect.ts`, and the
+ * `connect` wrapper in `src/app/create-server.ts` once the SDK emits 2020-12
+ * itself. Upstream tracking:
+ *   - https://github.com/modelcontextprotocol/typescript-sdk/issues/2084
+ *   - https://github.com/modelcontextprotocol/typescript-sdk/issues/2677
+ *   - https://github.com/modelcontextprotocol/typescript-sdk/issues/2721
+ *   - https://github.com/modelcontextprotocol/typescript-sdk/pull/2653
+ *   - https://github.com/modelcontextprotocol/typescript-sdk/pull/2085
+ * After bumping the SDK, `src/__test__/mcp/schema-dialect.test.ts` still asserts
+ * the advertised dialect, so it will keep passing once the shim is removed.
  */
 
 /** Canonical `$schema` for the dialect MCP clients validate against. */
