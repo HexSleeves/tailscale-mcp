@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Advertised tool schemas now declare JSON Schema 2020-12 instead of draft-07. The
+  MCP SDK hard-codes a `draft-7` conversion target for registered Zod schemas, and
+  clients that compile `outputSchema` with a 2020-12-only Ajv instance rejected every
+  tool before its handler ran.
+
 ## [1.3.4] - 2026-07-24
 
 ### Fixed
