@@ -36,7 +36,7 @@ cat > "$serve_config" <<EOF
     "$serve_host": {
       "Handlers": {
         "/": {
-          "Proxy": "http://127.0.0.1:$port"
+          "Proxy": "http://${hostname}:$port"
         }
       }
     }
