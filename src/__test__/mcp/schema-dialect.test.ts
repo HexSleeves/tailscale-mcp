@@ -3,7 +3,7 @@
  *
  * Importers: none — new test file
  * Affected surface: src/mcp/schemas/json-schema-dialect.ts,
- *   src/mcp/transports/schema-dialect.ts, src/app/create-server.ts
+ *   src/app/create-server.ts
  * Data files: none
  *
  * Regression guard: the MCP SDK converts registered Zod schemas with a
@@ -14,347 +14,80 @@
 import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type {
-  CallToolResult,
-  JSONRPCMessage,
-} from "@modelcontextprotocol/sdk/types.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z4mini from "zod/v4-mini";
 import { createMcpServer } from "../../app/create-server.js";
 import {
+  advertiseToolSchemasAs2020_12,
   JSON_SCHEMA_2020_12,
-  toJsonSchema2020_12,
+  withDialect2020_12,
 } from "../../mcp/schemas/json-schema-dialect.js";
 import * as outputSchemas from "../../mcp/schemas/tool-results.js";
-import {
-  normalizeOutboundMessage,
-  withNormalizedToolSchemas,
-} from "../../mcp/transports/schema-dialect.js";
 import { makeConfig, makeFakeService, silentLogger } from "./helpers.js";
 
 const DRAFT_07 = "http://json-schema.org/draft-07/schema#";
 
-describe("toJsonSchema2020_12", () => {
+describe("withDialect2020_12", () => {
   test("rewrites the draft-07 dialect marker", () => {
-    const result = toJsonSchema2020_12({
-      $schema: DRAFT_07,
-      type: "object",
-    }) as Record<string, unknown>;
+    const result = withDialect2020_12({ $schema: DRAFT_07, type: "object" });
 
-    expect(result.$schema).toBe(JSON_SCHEMA_2020_12);
-    expect(result.type).toBe("object");
+    expect(result).toEqual({ $schema: JSON_SCHEMA_2020_12, type: "object" });
   });
 
-  test("leaves an existing 2020-12 marker and unmarked schemas alone", () => {
-    const alreadyCurrent = toJsonSchema2020_12({
-      $schema: JSON_SCHEMA_2020_12,
-    }) as Record<string, unknown>;
+  test("leaves an existing 2020-12 marker, unmarked schemas and non-objects alone", () => {
+    const current = { $schema: JSON_SCHEMA_2020_12 };
+    const unmarked = { type: "string" };
 
-    expect(alreadyCurrent.$schema).toBe(JSON_SCHEMA_2020_12);
-    expect(toJsonSchema2020_12({ type: "string" })).toEqual({ type: "string" });
+    expect(withDialect2020_12(current)).toBe(current);
+    expect(withDialect2020_12(unmarked)).toBe(unmarked);
+    expect(withDialect2020_12(true)).toBe(true);
+    expect(withDialect2020_12(null)).toBe(null);
   });
 
   test("does not mutate its input", () => {
     const input = { $schema: DRAFT_07, properties: { a: { type: "string" } } };
-    toJsonSchema2020_12(input);
+    withDialect2020_12(input);
     expect(input.$schema).toBe(DRAFT_07);
   });
 
-  test("renames definitions to $defs and retargets its refs", () => {
-    const result = toJsonSchema2020_12({
+  test("touches only the root marker, never nested values", () => {
+    // Property names and literal values are data, not schema keywords.
+    const input = {
       $schema: DRAFT_07,
-      definitions: { Device: { type: "object" } },
-      properties: { device: { $ref: "#/definitions/Device" } },
-    }) as Record<string, unknown>;
+      properties: { definitions: { type: "string" } },
+      required: ["definitions"],
+      default: { $schema: DRAFT_07, items: [1, 2] },
+    };
 
-    expect(result.$defs).toEqual({ Device: { type: "object" } });
-    expect(result.definitions).toBeUndefined();
-    expect(result.properties).toEqual({ device: { $ref: "#/$defs/Device" } });
+    const result = withDialect2020_12(input);
+
+    expect(result.properties).toBe(input.properties);
+    expect(result.required).toBe(input.required);
+    expect(result.default).toBe(input.default);
   });
+});
 
-  test("an explicit $defs sibling wins over a renamed definitions block", () => {
-    const result = toJsonSchema2020_12({
-      definitions: { A: { type: "string" } },
-      $defs: { A: { type: "number" } },
-    }) as Record<string, unknown>;
+describe("advertiseToolSchemasAs2020_12", () => {
+  test("wraps only the tools/list handler", async () => {
+    const server = new McpServer({ name: "t", version: "0.0.0" });
+    advertiseToolSchemasAs2020_12(server);
+    server.registerPrompt("p", { description: "d" }, () => ({ messages: [] }));
 
-    expect(result.$defs).toEqual({ A: { type: "number" } });
-  });
-
-  test("converts tuple items to prefixItems and additionalItems to items", () => {
-    const result = toJsonSchema2020_12({
-      type: "array",
-      items: [{ type: "string" }, { type: "number" }],
-      additionalItems: false,
-    }) as Record<string, unknown>;
-
-    expect(result.prefixItems).toEqual([
-      { type: "string" },
-      { type: "number" },
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
     ]);
-    expect(result.items).toBe(false);
-    expect(result.additionalItems).toBeUndefined();
-  });
-
-  test("keeps single-schema items as items", () => {
-    const result = toJsonSchema2020_12({
-      type: "array",
-      items: { type: "string" },
-    }) as Record<string, unknown>;
-
-    expect(result.items).toEqual({ type: "string" });
-    expect(result.prefixItems).toBeUndefined();
-  });
-
-  test("ignores additionalItems when items is a single schema", () => {
-    // draft-07 applies `additionalItems` only to tuple `items`. Translating it
-    // here would emit `items: false` and reject every element.
-    const result = toJsonSchema2020_12({
-      type: "array",
-      items: { type: "string" },
-      additionalItems: false,
-    }) as Record<string, unknown>;
-
-    expect(result.items).toEqual({ type: "string" });
-    expect(result.additionalItems).toBeUndefined();
-    expect(result.prefixItems).toBeUndefined();
-  });
-
-  test("ignores additionalItems when items is absent", () => {
-    const result = toJsonSchema2020_12({
-      type: "array",
-      additionalItems: { type: "number" },
-    }) as Record<string, unknown>;
-
-    expect(result.items).toBeUndefined();
-    expect(result.additionalItems).toBeUndefined();
-  });
-
-  test("additionalItems translation is independent of key order", () => {
-    const tupleFirst = toJsonSchema2020_12({
-      items: [{ type: "string" }],
-      additionalItems: false,
-    }) as Record<string, unknown>;
-    const additionalFirst = toJsonSchema2020_12({
-      additionalItems: false,
-      items: [{ type: "string" }],
-    }) as Record<string, unknown>;
-
-    expect(tupleFirst).toEqual(additionalFirst);
-    expect(tupleFirst.items).toBe(false);
-    expect(tupleFirst.prefixItems).toEqual([{ type: "string" }]);
-
-    const singleFirst = toJsonSchema2020_12({
-      items: { type: "string" },
-      additionalItems: false,
-    });
-    const singleLast = toJsonSchema2020_12({
-      additionalItems: false,
-      items: { type: "string" },
-    });
-
-    expect(singleFirst).toEqual(singleLast);
-    expect(singleFirst).toEqual({ items: { type: "string" } });
-  });
-
-  test("drops $ref siblings that draft-07 ignores", () => {
-    // draft-07 §8.3: every sibling of `$ref` MUST be ignored. In 2020-12 they
-    // apply, so carrying `not: {}` across would flip this schema from
-    // accepting every instance to rejecting every instance.
-    const result = toJsonSchema2020_12({
-      $schema: DRAFT_07,
-      definitions: { Any: true },
-      $ref: "#/definitions/Any",
-      not: {},
-      type: "string",
-    }) as Record<string, unknown>;
-
-    expect(result.$ref).toBe("#/$defs/Any");
-    expect(result.not).toBeUndefined();
-    expect(result.type).toBeUndefined();
-    // Kept so the reference still resolves.
-    expect(result.$defs).toEqual({ Any: true });
-    expect(result.$schema).toBe(JSON_SCHEMA_2020_12);
-  });
-
-  test("keeps annotations alongside a draft-07 $ref", () => {
-    const result = toJsonSchema2020_12({
-      $schema: DRAFT_07,
-      $ref: "#/definitions/Device",
-      title: "Device",
-      description: "a device",
-      deprecated: true,
-      minLength: 3,
-    }) as Record<string, unknown>;
-
-    expect(result.title).toBe("Device");
-    expect(result.description).toBe("a device");
-    expect(result.deprecated).toBe(true);
-    // An assertion, so draft-07 ignored it.
-    expect(result.minLength).toBeUndefined();
-  });
-
-  test("leaves $ref siblings intact when the root is not draft-07", () => {
-    // A schema that never declared draft-07 may well intend its `$ref`
-    // siblings to validate; dropping them would silently weaken it.
-    const undeclared = toJsonSchema2020_12({
-      $ref: "#/$defs/Any",
-      not: {},
-    }) as Record<string, unknown>;
-    const current = toJsonSchema2020_12({
-      $schema: JSON_SCHEMA_2020_12,
-      $ref: "#/$defs/Any",
-      not: {},
-    }) as Record<string, unknown>;
-
-    expect(undeclared.not).toEqual({});
-    expect(current.not).toEqual({});
-  });
-
-  test("a $ref with no assertion siblings is untouched", () => {
-    const result = toJsonSchema2020_12({
-      $schema: DRAFT_07,
-      properties: { child: { allOf: [{ $ref: "#" }] } },
-    }) as Record<string, Record<string, unknown>>;
-
-    // This is the shape Zod actually emits for recursive schemas.
-    expect(result.properties.child).toEqual({ allOf: [{ $ref: "#" }] });
-  });
-
-  test("an explicit dependentRequired sibling wins regardless of key order", () => {
-    const dependenciesFirst = toJsonSchema2020_12({
-      dependencies: { creditCard: ["billingAddress"] },
-      dependentRequired: { creditCard: ["taxId"] },
-    }) as Record<string, unknown>;
-    const siblingFirst = toJsonSchema2020_12({
-      dependentRequired: { creditCard: ["taxId"] },
-      dependencies: { creditCard: ["billingAddress"] },
-    }) as Record<string, unknown>;
-
-    expect(dependenciesFirst).toEqual(siblingFirst);
-    expect(dependenciesFirst.dependentRequired).toEqual({
-      creditCard: ["taxId"],
-    });
-  });
-
-  test("splits dependencies into dependentRequired and dependentSchemas", () => {
-    const result = toJsonSchema2020_12({
-      dependencies: {
-        creditCard: ["billingAddress"],
-        shipping: { required: ["address"] },
-      },
-    }) as Record<string, unknown>;
-
-    expect(result.dependentRequired).toEqual({
-      creditCard: ["billingAddress"],
-    });
-    expect(result.dependentSchemas).toEqual({
-      shipping: { required: ["address"] },
-    });
-    expect(result.dependencies).toBeUndefined();
-  });
-
-  test("recurses through nested schemas and arrays", () => {
-    const result = toJsonSchema2020_12({
-      anyOf: [{ $schema: DRAFT_07, type: "string" }],
-      properties: { nested: { $schema: DRAFT_07, type: "number" } },
-    }) as Record<string, unknown>;
-
-    const anyOf = result.anyOf as Record<string, unknown>[];
-    const properties = result.properties as Record<
-      string,
-      Record<string, unknown>
-    >;
-
-    expect(anyOf[0].$schema).toBe(JSON_SCHEMA_2020_12);
-    expect(properties.nested.$schema).toBe(JSON_SCHEMA_2020_12);
-  });
-});
-
-describe("normalizeOutboundMessage", () => {
-  test("normalizes both schemas on every tool in a tools/list result", () => {
-    const message = {
-      jsonrpc: "2.0",
-      id: 1,
-      result: {
-        tools: [
-          {
-            name: "list_devices",
-            inputSchema: { $schema: DRAFT_07, type: "object" },
-            outputSchema: { $schema: DRAFT_07, type: "object" },
-          },
-        ],
-      },
-    } as unknown as JSONRPCMessage;
-
-    const result = normalizeOutboundMessage(message) as unknown as {
-      result: {
-        tools: {
-          name: string;
-          inputSchema: Record<string, unknown>;
-          outputSchema: Record<string, unknown>;
-        }[];
-      };
-    };
-    const [tool] = result.result.tools;
-
-    expect(tool.name).toBe("list_devices");
-    expect(tool.inputSchema.$schema).toBe(JSON_SCHEMA_2020_12);
-    expect(tool.outputSchema.$schema).toBe(JSON_SCHEMA_2020_12);
-  });
-
-  test("passes non-tools/list messages through untouched", () => {
-    const request = {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "list_devices" },
-    } as unknown as JSONRPCMessage;
-    const callResult = {
-      jsonrpc: "2.0",
-      id: 2,
-      result: { content: [{ type: "text", text: "{}" }] },
-    } as unknown as JSONRPCMessage;
-    const errorResponse = {
-      jsonrpc: "2.0",
-      id: 3,
-      error: { code: -32603, message: "boom" },
-    } as unknown as JSONRPCMessage;
-
-    expect(normalizeOutboundMessage(request)).toBe(request);
-    expect(normalizeOutboundMessage(callResult)).toBe(callResult);
-    expect(normalizeOutboundMessage(errorResponse)).toBe(errorResponse);
-  });
-});
-
-describe("withNormalizedToolSchemas", () => {
-  test("normalizes outbound messages and preserves transport members", async () => {
-    const sent: JSONRPCMessage[] = [];
-    const transport = {
-      sessionId: "session-1",
-      start: async () => {},
-      close: async () => {},
-      send: async (message: JSONRPCMessage) => {
-        sent.push(message);
-      },
-    } as unknown as Transport & { sessionId: string };
-
-    const wrapped = withNormalizedToolSchemas(transport);
-    expect(wrapped).toBe(transport);
-    expect(wrapped.sessionId).toBe("session-1");
-
-    await wrapped.send({
-      jsonrpc: "2.0",
-      id: 1,
-      result: { tools: [{ name: "t", outputSchema: { $schema: DRAFT_07 } }] },
-    } as unknown as JSONRPCMessage);
-
-    const delivered = sent[0] as unknown as {
-      result: { tools: { outputSchema: Record<string, unknown> }[] };
-    };
-    expect(delivered.result.tools[0].outputSchema.$schema).toBe(
-      JSON_SCHEMA_2020_12,
-    );
+    try {
+      const { prompts } = await client.listPrompts();
+      expect(prompts.map((prompt) => prompt.name)).toEqual(["p"]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 });
 
@@ -443,10 +176,10 @@ describe("tools/list over a connected transport", () => {
   });
 
   test("normalization is lossless for the shipped output schemas", () => {
-    // Proves the rewrite is a faithful translation and not just a relabel: each
-    // normalized schema matches what Zod itself emits when asked for 2020-12.
+    // Proves the root relabel is exact for what ships: each relabelled schema
+    // matches what Zod itself emits when asked for 2020-12.
     for (const [name, schema] of Object.entries(outputSchemas)) {
-      const viaDraft07 = toJsonSchema2020_12(
+      const viaDraft07 = withDialect2020_12(
         z4mini.toJSONSchema(schema as never, {
           target: "draft-7",
           io: "output",
