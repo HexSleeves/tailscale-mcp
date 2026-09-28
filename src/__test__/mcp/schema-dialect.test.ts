@@ -28,6 +28,64 @@ import { makeConfig, makeFakeService, silentLogger } from "./helpers.js";
 
 const DRAFT_07 = "http://json-schema.org/draft-07/schema#";
 
+/**
+ * Keywords that annotate or identify rather than assert. draft-07 ignores every
+ * sibling of `$ref`; these are harmless to carry across, assertions are not.
+ */
+const ANNOTATION_KEYWORDS = new Set([
+  "$anchor",
+  "$comment",
+  "$defs",
+  "$id",
+  "$schema",
+  "default",
+  "deprecated",
+  "description",
+  "examples",
+  "readOnly",
+  "title",
+  "writeOnly",
+]);
+
+/**
+ * Lists every construct in a schema SDK-emitted as draft-07 whose meaning would
+ * change under the root-only 2020-12 relabel. Empty means the relabel is exact.
+ *
+ * Only for schemas that started as draft-07: a schema authored against 2020-12
+ * may legitimately give `$ref` assertion siblings, which this would flag.
+ */
+function draft07OnlyConstructs(node: unknown, path: string): string[] {
+  if (Array.isArray(node)) {
+    return node.flatMap((child, index) =>
+      draft07OnlyConstructs(child, `${path}[${index}]`),
+    );
+  }
+  if (typeof node !== "object" || node === null) return [];
+
+  const record = node as Record<string, unknown>;
+  const found: string[] = [];
+  for (const key of ["definitions", "additionalItems", "dependencies"]) {
+    if (key in record) found.push(`${path}.${key}`);
+  }
+  // Tuple-form `items` is draft-07 only; 2020-12 spells it `prefixItems`.
+  if (Array.isArray(record.items)) found.push(`${path}.items is a tuple`);
+  if (typeof record.$ref === "string") {
+    if (record.$ref.includes("#/definitions/")) found.push(`${path}.$ref`);
+    // draft-07 ignores `$ref` siblings; 2020-12 applies them, so an assertion
+    // beside a `$ref` would start validating after the relabel.
+    for (const key of Object.keys(record)) {
+      if (key !== "$ref" && !ANNOTATION_KEYWORDS.has(key)) {
+        found.push(`${path}.${key} beside $ref`);
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    found.push(...draft07OnlyConstructs(value, `${path}.${key}`));
+  }
+  return found;
+}
+
 describe("withDialect2020_12", () => {
   test("rewrites the draft-07 dialect marker", () => {
     const result = withDialect2020_12({ $schema: DRAFT_07, type: "object" });
@@ -91,6 +149,40 @@ describe("advertiseToolSchemasAs2020_12", () => {
   });
 });
 
+describe("draft07OnlyConstructs", () => {
+  test("flags an assertion beside a $ref", () => {
+    expect(
+      draft07OnlyConstructs(
+        { properties: { device: { $ref: "#/$defs/Device", type: "object" } } },
+        "s",
+      ),
+    ).toEqual(["s.properties.device.type beside $ref"]);
+  });
+
+  test("allows annotations beside a $ref and Zod's recursion shape", () => {
+    expect(
+      draft07OnlyConstructs(
+        {
+          properties: {
+            device: { $ref: "#/$defs/Device", description: "a device" },
+            child: { allOf: [{ $ref: "#" }] },
+          },
+        },
+        "s",
+      ),
+    ).toEqual([]);
+  });
+
+  test("flags the renamed draft-07 keywords", () => {
+    expect(
+      draft07OnlyConstructs(
+        { definitions: {}, items: [{}], additionalItems: false },
+        "s",
+      ),
+    ).toEqual(["s.definitions", "s.additionalItems", "s.items is a tuple"]);
+  });
+});
+
 describe("tools/list over a connected transport", () => {
   async function connectClient() {
     const server = await createMcpServer({
@@ -140,35 +232,13 @@ describe("tools/list over a connected transport", () => {
     try {
       const { tools } = await client.listTools();
 
-      const walk = (node: unknown, path: string): void => {
-        if (Array.isArray(node)) {
-          node.forEach((child, index) => {
-            walk(child, `${path}[${index}]`);
-          });
-          return;
-        }
-        if (typeof node !== "object" || node === null) return;
-
-        const record = node as Record<string, unknown>;
-        for (const key of ["definitions", "additionalItems", "dependencies"]) {
-          expect(record[key], `${path}.${key}`).toBeUndefined();
-        }
-        // Tuple-form `items` is draft-07 only; 2020-12 spells it `prefixItems`.
-        expect(Array.isArray(record.items), `${path}.items is a tuple`).toBe(
-          false,
-        );
-        if (typeof record.$ref === "string") {
-          expect(record.$ref, `${path}.$ref`).not.toContain("#/definitions/");
-        }
-
-        for (const [key, value] of Object.entries(record)) {
-          walk(value, `${path}.${key}`);
-        }
-      };
-
       for (const tool of tools) {
-        walk(tool.inputSchema, `${tool.name}.inputSchema`);
-        walk(tool.outputSchema, `${tool.name}.outputSchema`);
+        expect(
+          draft07OnlyConstructs(tool.inputSchema, `${tool.name}.inputSchema`),
+        ).toEqual([]);
+        expect(
+          draft07OnlyConstructs(tool.outputSchema, `${tool.name}.outputSchema`),
+        ).toEqual([]);
       }
     } finally {
       await close();
@@ -197,8 +267,10 @@ describe("tools/list over a connected transport", () => {
   test("a tool call still returns validated structured content", async () => {
     const { client, close } = await connectClient();
     try {
-      // The client compiles `outputSchema` and validates `structuredContent`
-      // against it, so reaching a non-error result exercises the whole path.
+      // `listTools` is what makes the client compile each `outputSchema`; without
+      // it `callTool` skips validating `structuredContent`. Reaching a non-error
+      // result then exercises the advertised schema and the result together.
+      await client.listTools();
       const result = (await client.callTool({
         name: "list_devices",
         arguments: { includeRoutes: false, includeOffline: true },
