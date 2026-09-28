@@ -1,6 +1,7 @@
 import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 // Read package.json to get dependencies
 let packageJson = {
@@ -132,7 +133,10 @@ export async function buildProject(configs = [prodEsmConfig]) {
 }
 
 // CLI handling
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const mode = process.argv[2] || "build";
 
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
