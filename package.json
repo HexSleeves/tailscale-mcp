@@ -70,7 +70,7 @@
     "axios": "1.20.0",
     "dotenv": "17.4.2",
     "express": "5.2.1",
-    "ipaddr.js": "2.4.0",
+    "ipaddr.js": "2.5.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
