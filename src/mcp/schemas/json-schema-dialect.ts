@@ -16,9 +16,9 @@
  *   unsupported dialect ("$schema": "http://json-schema.org/draft-07/schema#").
  *
  * Only the root `$schema` marker is rewritten. The schemas this server emits use
- * no construct whose meaning differs between the two dialects (`definitions`,
- * `$ref`, tuple `items`, `additionalItems`, `dependencies`), so the relabel is
- * exact. `src/__test__/mcp/schema-dialect.test.ts` walks every advertised schema
+ * no construct whose meaning differs between the two dialects (assertions
+ * beside `$ref`, tuple `items`, `additionalItems`, `dependencies`), so the
+ * relabel is exact. `src/__test__/mcp/schema-dialect.test.ts` walks every advertised schema
  * and fails if one ever appears, at which point a real translation is needed.
  *
  * TODO(sdk#2084): delete this module and its call in `src/app/create-server.ts`

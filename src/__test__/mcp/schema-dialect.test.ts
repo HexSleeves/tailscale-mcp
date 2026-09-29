@@ -64,13 +64,14 @@ function draft07OnlyConstructs(node: unknown, path: string): string[] {
 
   const record = node as Record<string, unknown>;
   const found: string[] = [];
-  for (const key of ["definitions", "additionalItems", "dependencies"]) {
+  // `definitions` is not listed: 2020-12 treats it as an unknown keyword and a
+  // `#/definitions/...` `$ref` is a plain JSON Pointer, so both still resolve.
+  for (const key of ["additionalItems", "dependencies"]) {
     if (key in record) found.push(`${path}.${key}`);
   }
   // Tuple-form `items` is draft-07 only; 2020-12 spells it `prefixItems`.
   if (Array.isArray(record.items)) found.push(`${path}.items is a tuple`);
   if (typeof record.$ref === "string") {
-    if (record.$ref.includes("#/definitions/")) found.push(`${path}.$ref`);
     // draft-07 ignores `$ref` siblings; 2020-12 applies them, so an assertion
     // beside a `$ref` would start validating after the relabel.
     for (const key of Object.keys(record)) {
@@ -175,11 +176,20 @@ describe("draft07OnlyConstructs", () => {
 
   test("flags the renamed draft-07 keywords", () => {
     expect(
+      draft07OnlyConstructs({ items: [{}], additionalItems: false }, "s"),
+    ).toEqual(["s.additionalItems", "s.items is a tuple"]);
+  });
+
+  test("allows definitions and refs into it, which still resolve in 2020-12", () => {
+    expect(
       draft07OnlyConstructs(
-        { definitions: {}, items: [{}], additionalItems: false },
+        {
+          definitions: { Device: { type: "object" } },
+          properties: { device: { $ref: "#/definitions/Device" } },
+        },
         "s",
       ),
-    ).toEqual(["s.definitions", "s.additionalItems", "s.items is a tuple"]);
+    ).toEqual([]);
   });
 });
 
