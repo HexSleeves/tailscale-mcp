@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Updated `@modelcontextprotocol/sdk` to 1.32.2 and `zod` to 4.6.7, pinned
+  `body-parser` 2.4.0 and `follow-redirects` 1.16.2, and raised the `fast-uri`,
+  `hono`, `ip-address` and `qs` pins to 4.2.3, 4.13.14, 10.7.5 and 6.16.1,
+  clearing the advisories `bun audit` reported against the previous versions.
+
 ### Fixed
 
 - Advertised tool schemas now declare JSON Schema 2020-12 instead of draft-07. The
