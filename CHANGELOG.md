@@ -7,9 +7,9 @@ All notable changes to this project are documented in this file.
 ### Security
 
 - Updated `@modelcontextprotocol/sdk` to 1.32.2 and `zod` to 4.6.7, and pinned
-  `body-parser` 2.4.0, `follow-redirects` 1.16.2, `fast-uri` 4.2.3, `hono` 4.13.14
-  and `ip-address` 10.7.5, clearing the advisories `bun audit` reported against
-  the previous versions.
+  `body-parser` 2.4.0, `follow-redirects` 1.16.2, `fast-uri` 4.2.3, `hono` 4.13.14,
+  `ip-address` 10.7.5 and `qs` 6.16.1, clearing the advisories `bun audit`
+  reported against the previous versions.
 
 ### Fixed
 

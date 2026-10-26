@@ -5,8 +5,8 @@
  * `draft-7` and exposes no option to change it — see
  * `@modelcontextprotocol/sdk/server/zod-json-schema-compat.js`, where
  * `mapMiniTarget(undefined)` returns `'draft-7'` and `mcp.js` never passes a
- * target (verified on SDK 1.29.0, 1.30.1 and 1.32.2). Every advertised schema therefore
- * carries `"$schema": "http://json-schema.org/draft-07/schema#"`.
+ * target (verified on SDK 1.32.2). Every advertised schema therefore carries
+ * `"$schema": "http://json-schema.org/draft-07/schema#"`.
  *
  * Clients that compile `outputSchema` with an Ajv instance built for JSON Schema
  * 2020-12 refuse to compile a foreign dialect and reject the tool outright,
@@ -69,8 +69,9 @@ export function withDialect2020_12<T>(schema: T): T {
 /**
  * Makes the server's `tools/list` handler advertise JSON Schema 2020-12.
  *
- * `McpServer` installs that handler lazily, on the first `registerTool`, so this
- * must run BEFORE any tool is registered. It intercepts the registration by
+ * `McpServer` installs that handler on the first `registerTool`, or in its
+ * constructor when `capabilities.tools` is declared, so this must run BEFORE any
+ * tool is registered and the server must not declare `tools`. It intercepts the registration by
  * method (via the `ListToolsRequestSchema` it is keyed on) and wraps the SDK's
  * handler; every other method registers untouched.
  */
