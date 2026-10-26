@@ -28,17 +28,23 @@ afterAll(() => {
   server.close();
 });
 
-function getMcp(host: string, token?: string): Promise<number> {
+function send(
+  method: string,
+  path: string,
+  host: string,
+  { token, body }: { token?: string; body?: string } = {},
+): Promise<number> {
   return new Promise((resolve, reject) => {
     const req = request(
       {
         host: "127.0.0.1",
         port,
-        path: "/mcp",
-        method: "GET",
+        path,
+        method,
         headers: {
           host,
           ...(token ? { authorization: `Bearer ${token}` } : {}),
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
         },
       },
       (res) => {
@@ -47,9 +53,12 @@ function getMcp(host: string, token?: string): Promise<number> {
       },
     );
     req.on("error", reject);
-    req.end();
+    req.end(body);
   });
 }
+
+const getMcp = (host: string, token?: string) =>
+  send("GET", "/mcp", host, { token });
 
 describe("HTTP transport Host check", () => {
   test("accepts tailnet and allowlisted hosts", async () => {
@@ -65,5 +74,14 @@ describe("HTTP transport Host check", () => {
 
   test("requires the bearer token on an allowed host", async () => {
     expect(await getMcp("mcp.tailnet-name.ts.net")).toBe(401);
+  });
+
+  test("rejects a disallowed host before reading the body", async () => {
+    expect(
+      await send("POST", "/mcp", "evil.example.com", { body: "{bad" }),
+    ).toBe(403);
+    expect(
+      await send("POST", "/other", "evil.example.com", { body: "{bad" }),
+    ).toBe(404);
   });
 });

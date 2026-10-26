@@ -21,13 +21,12 @@ export function createHttpApp({
   app.disable("x-powered-by");
   app.use(createRateLimitMiddleware());
   app.use("/mcp", createHttpAuthMiddleware(config));
-  app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  app.post("/mcp", async (req, res) => {
+  app.post("/mcp", express.json({ limit: "1mb" }), async (req, res) => {
     const server = await createMcpServer({ config, logger, tailscale });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
