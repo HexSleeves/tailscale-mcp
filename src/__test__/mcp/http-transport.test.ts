@@ -86,4 +86,19 @@ describe("HTTP transport Host check", () => {
       await send("POST", "/other", "evil.example.com", { body: "{bad" }),
     ).toBe(404);
   });
+
+  test("parses JSON on an authenticated POST /mcp up to 1mb", async () => {
+    const host = "mcp.tailnet-name.ts.net";
+    expect(
+      await send("POST", "/mcp", host, { token: "secret", body: "{bad" }),
+    ).toBe(400);
+    const underLimit = JSON.stringify({ pad: "x".repeat(200 * 1024) });
+    expect(
+      await send("POST", "/mcp", host, { token: "secret", body: underLimit }),
+    ).not.toBe(413);
+    const oversized = JSON.stringify({ pad: "x".repeat(1024 * 1024) });
+    expect(
+      await send("POST", "/mcp", host, { token: "secret", body: oversized }),
+    ).toBe(413);
+  });
 });
