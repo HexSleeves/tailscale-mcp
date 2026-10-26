@@ -5,7 +5,7 @@
  * `draft-7` and exposes no option to change it — see
  * `@modelcontextprotocol/sdk/server/zod-json-schema-compat.js`, where
  * `mapMiniTarget(undefined)` returns `'draft-7'` and `mcp.js` never passes a
- * target (verified on SDK 1.29.0 and 1.30.1). Every advertised schema therefore
+ * target (verified on SDK 1.29.0, 1.30.1 and 1.32.2). Every advertised schema therefore
  * carries `"$schema": "http://json-schema.org/draft-07/schema#"`.
  *
  * Clients that compile `outputSchema` with an Ajv instance built for JSON Schema
