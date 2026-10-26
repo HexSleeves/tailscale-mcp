@@ -1,4 +1,3 @@
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { createMcpServer } from "../../app/create-server.js";
@@ -8,25 +7,25 @@ import { createHttpAuthMiddleware } from "../../security/auth.js";
 import { createRateLimitMiddleware } from "../../security/rate-limit.js";
 import { TailscaleService } from "../../tailscale/service.js";
 
-export async function startHttpTransport({
+export function createHttpApp({
   config,
   logger,
+  tailscale,
 }: {
   config: AppConfig;
   logger: AppLogger;
-}): Promise<void> {
-  const tailscale = await TailscaleService.create({ config, logger });
-  const app = createMcpExpressApp();
+  tailscale: TailscaleService;
+}): express.Express {
+  const app = express();
 
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "1mb" }));
   app.use(createRateLimitMiddleware());
+  app.use("/mcp", createHttpAuthMiddleware(config));
+  app.use(express.json({ limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
-
-  app.use("/mcp", createHttpAuthMiddleware(config));
 
   app.post("/mcp", async (req, res) => {
     const server = await createMcpServer({ config, logger, tailscale });
@@ -67,6 +66,19 @@ export async function startHttpTransport({
       id: null,
     });
   });
+
+  return app;
+}
+
+export async function startHttpTransport({
+  config,
+  logger,
+}: {
+  config: AppConfig;
+  logger: AppLogger;
+}): Promise<void> {
+  const tailscale = await TailscaleService.create({ config, logger });
+  const app = createHttpApp({ config, logger, tailscale });
 
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(
