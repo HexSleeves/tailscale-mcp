@@ -71,9 +71,9 @@ export function withDialect2020_12<T>(schema: T): T {
  *
  * `McpServer` installs that handler on the first `registerTool`, or in its
  * constructor when `capabilities.tools` is declared, so this must run BEFORE any
- * tool is registered and the server must not declare `tools`. It intercepts the registration by
- * method (via the `ListToolsRequestSchema` it is keyed on) and wraps the SDK's
- * handler; every other method registers untouched.
+ * tool is registered and the server must not declare `tools`. It intercepts the
+ * registration by method (via the `ListToolsRequestSchema` it is keyed on) and
+ * wraps the SDK's handler; every other method registers untouched.
  */
 export function advertiseToolSchemasAs2020_12(server: McpServer): void {
   const protocol = server.server;
