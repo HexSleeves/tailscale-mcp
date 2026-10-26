@@ -13,7 +13,7 @@ beforeAll(async () => {
   const app = createHttpApp({
     config: makeConfig({
       MCP_HTTP_BEARER_TOKEN: "secret",
-      MCP_ALLOWED_HOSTS: "custom.local",
+      MCP_ALLOWED_HOSTS: "custom.local,fd7a::1",
     }),
     logger: silentLogger,
     tailscale: {} as TailscaleService,
@@ -65,6 +65,8 @@ describe("HTTP transport Host check", () => {
     expect(await getMcp("mcp.tailnet-name.ts.net", "secret")).toBe(405);
     expect(await getMcp("custom.local:3000", "secret")).toBe(405);
     expect(await getMcp(`localhost:${port}`, "secret")).toBe(405);
+    expect(await getMcp(`[::1]:${port}`, "secret")).toBe(405);
+    expect(await getMcp("[fd7a::1]:3000", "secret")).toBe(405);
   });
 
   test("rejects other hosts before checking the token", async () => {
