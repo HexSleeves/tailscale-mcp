@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file.
   MCP SDK hard-codes a `draft-7` conversion target for registered Zod schemas, and
   clients that compile `outputSchema` with a 2020-12-only Ajv instance rejected every
   tool before its handler ran.
+- The HTTP transport answered `403` for every Host except `localhost`, `127.0.0.1`
+  and `[::1]`, including `*.ts.net` names behind Tailscale Serve and every
+  `MCP_ALLOWED_HOSTS` entry. The MCP SDK's own localhost-only Host check ran before
+  the server's allowlist; it is removed, so `MCP_ALLOWED_HOSTS` and `*.ts.net` apply.
 
 ## [1.3.4] - 2026-07-24
 
