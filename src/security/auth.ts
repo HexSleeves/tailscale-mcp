@@ -26,8 +26,13 @@ function hostnameOf(hostHeader: string): string | undefined {
     return hostHeader.split(":")[0]?.toLowerCase();
   }
 
-  const address = /^\[([^\]]+)\](?::\d*)?$/.exec(hostHeader)?.[1];
+  const address = /^\[([^\]%]+)\](?::\d*)?$/.exec(hostHeader)?.[1];
   return address && isIPv6(address) ? address.toLowerCase() : undefined;
+}
+
+function normalizeAllowedHost(allowed: string): string {
+  const address = /^\[(.*)\]$/.exec(allowed)?.[1];
+  return (address && isIPv6(address) ? address : allowed).toLowerCase();
 }
 
 export function isAllowedHost(
@@ -48,9 +53,7 @@ export function isAllowedHost(
     host === "127.0.0.1" ||
     host === "::1" ||
     host.endsWith(".ts.net") ||
-    extraHosts
-      .map((allowed) => allowed.replace(/^\[(.*)\]$/, "$1").toLowerCase())
-      .includes(host)
+    extraHosts.map(normalizeAllowedHost).includes(host)
   );
 }
 
