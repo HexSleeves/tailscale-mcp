@@ -28,7 +28,6 @@ export async function createMcpServer({
     },
     {
       capabilities: {
-        tools: {},
         resources: {},
         prompts: {},
         logging: {},
@@ -39,7 +38,9 @@ export async function createMcpServer({
   // The SDK advertises tool schemas as draft-07 with no way to change the
   // conversion target, and clients that compile `outputSchema` against a
   // 2020-12-only validator reject every tool. Must run before registerTools:
-  // the SDK installs the tools/list handler on the first registered tool.
+  // the SDK installs the tools/list handler on the first registered tool, or in
+  // its constructor when `tools` is declared in capabilities, so `tools` stays
+  // out of the capabilities above.
   // TODO(sdk#2084): drop once the SDK emits 2020-12 — see
   // ../mcp/schemas/json-schema-dialect.ts for the upstream issues and PRs.
   advertiseToolSchemasAs2020_12(server);
