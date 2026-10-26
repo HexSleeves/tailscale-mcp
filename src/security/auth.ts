@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { isIPv6 } from "node:net";
 import type { NextFunction, Request, Response } from "express";
 import type { AppConfig } from "../config/env.js";
 
@@ -20,6 +21,20 @@ export function validateBearerToken(
   );
 }
 
+function hostnameOf(hostHeader: string): string | undefined {
+  if (!hostHeader.startsWith("[")) {
+    return hostHeader.split(":")[0]?.toLowerCase();
+  }
+
+  const address = /^\[([^\]%]+)\](?::\d*)?$/.exec(hostHeader)?.[1];
+  return address && isIPv6(address) ? address.toLowerCase() : undefined;
+}
+
+function normalizeAllowedHost(allowed: string): string {
+  const address = /^\[(.*)\]$/.exec(allowed)?.[1];
+  return (address && isIPv6(address) ? address : allowed).toLowerCase();
+}
+
 export function isAllowedHost(
   hostHeader: string | undefined,
   extraHosts: string[] = [],
@@ -28,7 +43,7 @@ export function isAllowedHost(
     return false;
   }
 
-  const host = hostHeader.split(":")[0]?.toLowerCase();
+  const host = hostnameOf(hostHeader);
   if (!host) {
     return false;
   }
@@ -38,7 +53,7 @@ export function isAllowedHost(
     host === "127.0.0.1" ||
     host === "::1" ||
     host.endsWith(".ts.net") ||
-    extraHosts.map((allowed) => allowed.toLowerCase()).includes(host)
+    extraHosts.map(normalizeAllowedHost).includes(host)
   );
 }
 
